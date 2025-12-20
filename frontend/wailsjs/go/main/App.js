@@ -6,8 +6,16 @@ export function DefaultPrintParams() {
   return window['go']['main']['App']['DefaultPrintParams']();
 }
 
+export function GetPrinterJobs(arg1) {
+  return window['go']['main']['App']['GetPrinterJobs'](arg1);
+}
+
 export function NotifyPrintResult(arg1) {
   return window['go']['main']['App']['NotifyPrintResult'](arg1);
+}
+
+export function PausePrinter(arg1) {
+  return window['go']['main']['App']['PausePrinter'](arg1);
 }
 
 export function StartPrint(arg1) {

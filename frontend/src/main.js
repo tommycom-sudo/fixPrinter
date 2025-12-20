@@ -5,11 +5,15 @@ import {
 	DefaultPrintParams,
 	StartPrint,
 	NotifyPrintResult,
+	PausePrinter,
+	GetPrinterJobs,
 } from '../wailsjs/go/main/App';
 
 const state = {
 	defaultPayload: null,
 	isPrinting: false,
+	jobs: [],
+	jobsTimer: null,
 };
 
 const dom = {};
@@ -29,8 +33,92 @@ function setBusy(isBusy) {
 	}
 	dom.printButton.disabled = isBusy;
 	dom.resetButton.disabled = isBusy;
+	if (dom.pauseButton) {
+		dom.pauseButton.disabled = isBusy;
+	}
 	dom.printButton.innerText = isBusy ? '执行中…' : '执行打印';
 	dom.page.classList.toggle('page--busy', isBusy);
+}
+
+function setJobsStatus(message, isError = false) {
+	if (!dom.jobsStatus) {
+		return;
+	}
+	dom.jobsStatus.textContent = message;
+	dom.jobsStatus.classList.toggle('jobs__status--error', isError);
+}
+
+function renderJobs() {
+	if (!dom.jobsBody) {
+		return;
+	}
+	const jobs = Array.isArray(state.jobs) ? state.jobs : [];
+	dom.jobsBody.replaceChildren();
+
+	if (jobs.length === 0) {
+		if (dom.jobsTable) {
+			dom.jobsTable.classList.add('jobs-table--hidden');
+		}
+		if (dom.jobsEmpty) {
+			dom.jobsEmpty.classList.add('jobs__empty--visible');
+		}
+		return;
+	}
+
+	if (dom.jobsTable) {
+		dom.jobsTable.classList.remove('jobs-table--hidden');
+	}
+	if (dom.jobsEmpty) {
+		dom.jobsEmpty.classList.remove('jobs__empty--visible');
+	}
+
+	jobs.forEach((job) => {
+		const row = document.createElement('tr');
+		row.innerHTML = `
+      <td>${job?.id ?? '-'}</td>
+      <td>${job?.computerName || '—'}</td>
+      <td>${job?.printerName || '—'}</td>
+      <td>${job?.documentName || '暂无文件名'}</td>
+      <td>${job?.submittedTime || '—'}</td>
+      <td>${job?.jobStatus || '未知'}</td>
+    `;
+		dom.jobsBody.appendChild(row);
+	});
+}
+
+async function refreshJobs(showLoading = false) {
+	if (showLoading) {
+		setJobsStatus('正在提取 MS 打印任务…');
+	}
+
+	try {
+		const jobs = await GetPrinterJobs('MS');
+		state.jobs = Array.isArray(jobs) ? jobs : [];
+		renderJobs();
+		const count = state.jobs.length;
+		if (count === 0) {
+			setJobsStatus('MS 打印队列为空');
+		} else {
+			setJobsStatus(`MS 队列中有 ${count} 个任务`);
+		}
+	} catch (error) {
+		console.error('提取打印任务失败', error);
+		const message = error && error.message ? error.message : '无法获取打印任务';
+		setJobsStatus(message, true);
+	}
+}
+
+function stopJobsMonitor() {
+	if (state.jobsTimer) {
+		clearInterval(state.jobsTimer);
+		state.jobsTimer = null;
+	}
+}
+
+function startJobsMonitor() {
+	stopJobsMonitor();
+	refreshJobs(true);
+	state.jobsTimer = setInterval(refreshJobs, 5000);
 }
 
 async function loadDefaults() {
@@ -178,9 +266,26 @@ async function handlePrint() {
 	}
 }
 
+async function handlePausePrinter() {
+	setStatus('正在暂停打印机 MS …');
+	try {
+		await PausePrinter('MS');
+		setStatus('打印机 MS 已暂停。');
+	} catch (error) {
+		const message = error && error.message ? error.message : '暂停打印机失败';
+		setStatus(message, true);
+	}
+}
+
 function bindEvents() {
 	dom.printButton.addEventListener('click', handlePrint);
 	dom.resetButton.addEventListener('click', loadDefaults);
+	if (dom.pauseButton) {
+		dom.pauseButton.addEventListener('click', handlePausePrinter);
+	}
+	if (dom.refreshJobsButton) {
+		dom.refreshJobsButton.addEventListener('click', () => refreshJobs(true));
+	}
 }
 
 function mountUI() {
@@ -203,6 +308,7 @@ function mountUI() {
             <h2>打印参数</h2>
             <div class="panel__actions">
               <button id="reset-btn" class="ghost">恢复默认</button>
+              <button id="pause-btn" class="ghost ghost--warn">暂停打印机</button>
               <button id="print-btn">执行打印</button>
             </div>
           </div>
@@ -219,6 +325,34 @@ function mountUI() {
             </p>
           </div>
         </section>
+        <section class="panel panel--jobs">
+          <div class="panel__header">
+            <h2>打印任务监控</h2>
+            <div class="panel__actions">
+              <button id="refresh-jobs-btn" class="ghost">手动刷新</button>
+            </div>
+          </div>
+          <div class="jobs__status" id="jobs-status">等待获取 MS 打印队列…</div>
+          <div class="jobs__table-wrapper">
+            <table class="jobs-table jobs-table--hidden" id="jobs-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>主机</th>
+                  <th>打印机</th>
+                  <th>文档</th>
+                  <th>提交时间</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody id="jobs-body"></tbody>
+            </table>
+            <div class="jobs__empty" id="jobs-empty">当前打印队列为空</div>
+          </div>
+          <p class="jobs__hint">
+            每 5 秒调用 <code>Get-PrintJob -PrinterName "MS"</code> 获取任务列表，便于实时监控。
+          </p>
+        </section>
       </div>
     </div>
   `;
@@ -227,8 +361,14 @@ function mountUI() {
 	dom.editor = document.getElementById('payload-editor');
 	dom.printButton = document.getElementById('print-btn');
 	dom.resetButton = document.getElementById('reset-btn');
+	dom.pauseButton = document.getElementById('pause-btn');
 	dom.status = document.getElementById('status-text');
 	dom.previewFrame = document.getElementById('report-frame');
+	dom.jobsTable = document.getElementById('jobs-table');
+	dom.jobsBody = document.getElementById('jobs-body');
+	dom.jobsStatus = document.getElementById('jobs-status');
+	dom.jobsEmpty = document.getElementById('jobs-empty');
+	dom.refreshJobsButton = document.getElementById('refresh-jobs-btn');
 }
 
 async function bootstrap() {
@@ -240,6 +380,8 @@ async function bootstrap() {
 	};
 
 	await loadDefaults();
+	window.addEventListener('beforeunload', stopJobsMonitor);
+	startJobsMonitor();
 }
 
 bootstrap();

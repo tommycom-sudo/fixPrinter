@@ -1,3 +1,30 @@
+export namespace main {
+	
+	export class PrintJob {
+	    id: number;
+	    computerName: string;
+	    printerName: string;
+	    documentName: string;
+	    submittedTime: string;
+	    jobStatus: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PrintJob(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.computerName = source["computerName"];
+	        this.printerName = source["printerName"];
+	        this.documentName = source["documentName"];
+	        this.submittedTime = source["submittedTime"];
+	        this.jobStatus = source["jobStatus"];
+	    }
+	}
+
+}
+
 export namespace printer {
 	
 	export class Reportlet {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
@@ -22,6 +23,16 @@ type App struct {
 	proxy      *proxy.Server
 	proxyBase  string
 	remoteBase string
+}
+
+// PrintJob captures a subset of properties returned by Get-PrintJob.
+type PrintJob struct {
+	ID            int    `json:"id"`
+	ComputerName  string `json:"computerName"`
+	PrinterName   string `json:"printerName"`
+	DocumentName  string `json:"documentName"`
+	SubmittedTime string `json:"submittedTime"`
+	JobStatus     string `json:"jobStatus"`
 }
 
 // NewApp creates a new App application struct
@@ -87,6 +98,47 @@ func (a *App) PausePrinter(name string) error {
 	}
 
 	return nil
+}
+
+// GetPrinterJobs returns the current print queue items for the requested printer (default: MS).
+func (a *App) GetPrinterJobs(name string) ([]PrintJob, error) {
+	target := strings.TrimSpace(name)
+	if target == "" {
+		target = "MS"
+	}
+
+	script := fmt.Sprintf(`$ErrorActionPreference='Stop';
+$OutputEncoding=[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();
+$jobs = Get-PrintJob -PrinterName %q | Select-Object @{Name='id';Expression={$_.Id}}, @{Name='computerName';Expression={$_.ComputerName}}, @{Name='printerName';Expression={$_.PrinterName}}, @{Name='documentName';Expression={$_.DocumentName}}, @{Name='submittedTime';Expression={ if ($_.SubmittedTime) { $_.SubmittedTime.ToString('yyyy-MM-dd HH:mm:ss') } else { '' } }}, @{Name='jobStatus';Expression={ if ($_.JobStatus) { $_.JobStatus.ToString() } else { '' } }};
+$jobs = @($jobs);
+$jobs | ConvertTo-Json -Depth 3`, target)
+
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", script)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("get jobs for printer %s failed: %w: %s", target, err, strings.TrimSpace(string(output)))
+	}
+
+	raw := strings.TrimSpace(string(output))
+	if raw == "" || raw == "[]" || raw == "null" {
+		return []PrintJob{}, nil
+	}
+
+	var jobs []PrintJob
+	if strings.HasPrefix(raw, "{") {
+		var job PrintJob
+		if err := json.Unmarshal([]byte(raw), &job); err != nil {
+			return nil, fmt.Errorf("decode printer job for %s: %w", target, err)
+		}
+		return []PrintJob{job}, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &jobs); err != nil {
+		return nil, fmt.Errorf("decode printer jobs for %s: %w", target, err)
+	}
+
+	return jobs, nil
 }
 
 func (a *App) startProxy(ctx context.Context) {
