@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/url"
+	"os/exec"
 	"strings"
+	"syscall"
 
 	"fine-report-printer/internal/printer"
 	"fine-report-printer/internal/proxy"
@@ -66,6 +69,24 @@ func (a *App) StartPrint(params printer.PrintParams) (*printer.PrintResult, erro
 // NotifyPrintResult is triggered from the frontend once the JS automation resolves.
 func (a *App) NotifyPrintResult(result printer.PrintResult) {
 	a.printer.NotifyResult(result)
+}
+
+// PausePrinter uses Set-Printer to effectively disable the queue by limiting the print window.
+func (a *App) PausePrinter(name string) error {
+	target := strings.TrimSpace(name)
+	if target == "" {
+		return fmt.Errorf("printer name is required")
+	}
+
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", fmt.Sprintf("Set-Printer -Name %q -StartTime 0 -UntilTime 2", target))
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("pause printer %s failed: %w: %s", target, err, strings.TrimSpace(string(output)))
+	}
+
+	return nil
 }
 
 func (a *App) startProxy(ctx context.Context) {
