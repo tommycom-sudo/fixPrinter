@@ -6,6 +6,7 @@ import {
 	StartPrint,
 	NotifyPrintResult,
 	PausePrinter,
+	ResumePrinter,
 	GetPrinterJobs,
 } from '../wailsjs/go/main/App';
 
@@ -35,6 +36,9 @@ function setBusy(isBusy) {
 	dom.resetButton.disabled = isBusy;
 	if (dom.pauseButton) {
 		dom.pauseButton.disabled = isBusy;
+	}
+	if (dom.resumeButton) {
+		dom.resumeButton.disabled = isBusy;
 	}
 	dom.printButton.innerText = isBusy ? '执行中…' : '执行打印';
 	dom.page.classList.toggle('page--busy', isBusy);
@@ -277,11 +281,25 @@ async function handlePausePrinter() {
 	}
 }
 
+async function handleResumePrinter() {
+	setStatus('正在恢复打印机 MS …');
+	try {
+		await ResumePrinter('MS');
+		setStatus('打印机 MS 已恢复。');
+	} catch (error) {
+		const message = error && error.message ? error.message : '恢复打印机失败';
+		setStatus(message, true);
+	}
+}
+
 function bindEvents() {
 	dom.printButton.addEventListener('click', handlePrint);
 	dom.resetButton.addEventListener('click', loadDefaults);
 	if (dom.pauseButton) {
 		dom.pauseButton.addEventListener('click', handlePausePrinter);
+	}
+	if (dom.resumeButton) {
+		dom.resumeButton.addEventListener('click', handleResumePrinter);
 	}
 	if (dom.refreshJobsButton) {
 		dom.refreshJobsButton.addEventListener('click', () => refreshJobs(true));
@@ -309,6 +327,7 @@ function mountUI() {
             <div class="panel__actions">
               <button id="reset-btn" class="ghost">恢复默认</button>
               <button id="pause-btn" class="ghost ghost--warn">暂停打印机</button>
+              <button id="resume-btn" class="ghost ghost--success">恢复打印机</button>
               <button id="print-btn">执行打印</button>
             </div>
           </div>
@@ -362,6 +381,7 @@ function mountUI() {
 	dom.printButton = document.getElementById('print-btn');
 	dom.resetButton = document.getElementById('reset-btn');
 	dom.pauseButton = document.getElementById('pause-btn');
+	dom.resumeButton = document.getElementById('resume-btn');
 	dom.status = document.getElementById('status-text');
 	dom.previewFrame = document.getElementById('report-frame');
 	dom.jobsTable = document.getElementById('jobs-table');

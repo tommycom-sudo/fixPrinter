@@ -18,6 +18,10 @@ export function PausePrinter(arg1) {
   return window['go']['main']['App']['PausePrinter'](arg1);
 }
 
+export function ResumePrinter(arg1) {
+  return window['go']['main']['App']['ResumePrinter'](arg1);
+}
+
 export function StartPrint(arg1) {
   return window['go']['main']['App']['StartPrint'](arg1);
 }

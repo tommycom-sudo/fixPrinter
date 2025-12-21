@@ -11,4 +11,6 @@ export function NotifyPrintResult(arg1:printer.PrintResult):Promise<void>;
 
 export function PausePrinter(arg1:string):Promise<void>;
 
+export function ResumePrinter(arg1:string):Promise<void>;
+
 export function StartPrint(arg1:printer.PrintParams):Promise<printer.PrintResult>;

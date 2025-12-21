@@ -100,6 +100,25 @@ func (a *App) PausePrinter(name string) error {
 	return nil
 }
 
+// ResumePrinter restores the printer by removing the time restriction.
+func (a *App) ResumePrinter(name string) error {
+	target := strings.TrimSpace(name)
+	if target == "" {
+		return fmt.Errorf("printer name is required")
+	}
+
+	// Remove time restrictions by setting StartTime and UntilTime to null (0 means 24/7 available)
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", fmt.Sprintf("Set-Printer -Name %q -StartTime 0 -UntilTime 0", target))
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("resume printer %s failed: %w: %s", target, err, strings.TrimSpace(string(output)))
+	}
+
+	return nil
+}
+
 // GetPrinterJobs returns the current print queue items for the requested printer (default: MS).
 func (a *App) GetPrinterJobs(name string) ([]PrintJob, error) {
 	target := strings.TrimSpace(name)
