@@ -22,6 +22,26 @@ export namespace main {
 	        this.jobStatus = source["jobStatus"];
 	    }
 	}
+	export class PrinterStatus {
+	    name: string;
+	    printerStatus: number;
+	    startTime: number;
+	    untilTime: number;
+	    isPaused: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PrinterStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.printerStatus = source["printerStatus"];
+	        this.startTime = source["startTime"];
+	        this.untilTime = source["untilTime"];
+	        this.isPaused = source["isPaused"];
+	    }
+	}
 
 }
 

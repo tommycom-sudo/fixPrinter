@@ -8,6 +8,8 @@ import {
 	PausePrinter,
 	ResumePrinter,
 	GetPrinterJobs,
+	GetPrinterStatus,
+	RemovePrintJob,
 } from '../wailsjs/go/main/App';
 
 const state = {
@@ -15,6 +17,9 @@ const state = {
 	isPrinting: false,
 	jobs: [],
 	jobsTimer: null,
+	printerStatus: null,
+	autoDeleteEnabled: false,
+	deletedJobsCount: 0,
 };
 
 const dom = {};
@@ -90,20 +95,72 @@ function renderJobs() {
 	});
 }
 
+async function checkPrinterStatus() {
+	try {
+		const status = await GetPrinterStatus('MS');
+		state.printerStatus = status;
+		return status;
+	} catch (error) {
+		console.error('检查打印机状态失败', error);
+		return null;
+	}
+}
+
 async function refreshJobs(showLoading = false) {
 	if (showLoading) {
 		setJobsStatus('正在提取 MS 打印任务…');
 	}
 
 	try {
+		// 检查打印机状态
+		const status = await checkPrinterStatus();
+		const isPaused = status && status.isPaused;
+
+		// 获取任务列表
 		const jobs = await GetPrinterJobs('MS');
+		const previousJobs = state.jobs;
 		state.jobs = Array.isArray(jobs) ? jobs : [];
+
+		// 如果打印机处于暂停状态，自动删除新任务
+		if (isPaused && state.autoDeleteEnabled && state.jobs.length > 0) {
+			// 找出新任务（之前不存在的任务）
+			const previousJobIds = new Set(previousJobs.map(j => j.id));
+			const newJobs = state.jobs.filter(job => !previousJobIds.has(job.id));
+
+			// 删除所有新任务
+			for (const job of newJobs) {
+				try {
+					await RemovePrintJob('MS', job.id);
+					state.deletedJobsCount++;
+					console.log(`[AutoDelete] 已删除任务 #${job.id}: ${job.documentName || '未知文档'}`);
+				} catch (error) {
+					console.error(`[AutoDelete] 删除任务 #${job.id} 失败:`, error);
+				}
+			}
+
+			// 如果有新任务被删除，重新获取任务列表
+			if (newJobs.length > 0) {
+				const updatedJobs = await GetPrinterJobs('MS');
+				state.jobs = Array.isArray(updatedJobs) ? updatedJobs : [];
+			}
+		}
+
 		renderJobs();
 		const count = state.jobs.length;
-		if (count === 0) {
-			setJobsStatus('MS 打印队列为空');
+		
+		// 更新状态显示
+		if (isPaused && state.autoDeleteEnabled) {
+			if (count === 0) {
+				setJobsStatus(`MS 打印队列为空（已自动删除 ${state.deletedJobsCount} 个任务）`);
+			} else {
+				setJobsStatus(`MS 队列中有 ${count} 个任务（暂停中，已自动删除 ${state.deletedJobsCount} 个任务）`);
+			}
 		} else {
-			setJobsStatus(`MS 队列中有 ${count} 个任务`);
+			if (count === 0) {
+				setJobsStatus('MS 打印队列为空');
+			} else {
+				setJobsStatus(`MS 队列中有 ${count} 个任务`);
+			}
 		}
 	} catch (error) {
 		console.error('提取打印任务失败', error);
@@ -121,7 +178,31 @@ function stopJobsMonitor() {
 
 function startJobsMonitor() {
 	stopJobsMonitor();
-	refreshJobs(true);
+	// 初始化时检查打印机状态，如果暂停则启用自动删除并清理现有任务
+	checkPrinterStatus().then(async status => {
+		if (status && status.isPaused) {
+			state.autoDeleteEnabled = true;
+			console.log('[AutoDelete] 检测到打印机已暂停，启用自动删除功能');
+			// 清理暂停时已有的任务
+			try {
+				const jobs = await GetPrinterJobs('MS');
+				if (Array.isArray(jobs) && jobs.length > 0) {
+					for (const job of jobs) {
+						try {
+							await RemovePrintJob('MS', job.id);
+							state.deletedJobsCount++;
+							console.log(`[AutoDelete] 启动时删除现有任务 #${job.id}`);
+						} catch (error) {
+							console.error(`[AutoDelete] 删除任务 #${job.id} 失败:`, error);
+						}
+					}
+				}
+			} catch (error) {
+				console.error('启动时获取任务列表失败:', error);
+			}
+		}
+		refreshJobs(true);
+	});
 	state.jobsTimer = setInterval(refreshJobs, 5000);
 }
 
@@ -274,7 +355,32 @@ async function handlePausePrinter() {
 	setStatus('正在暂停打印机 MS …');
 	try {
 		await PausePrinter('MS');
-		setStatus('打印机 MS 已暂停。');
+		setStatus('打印机 MS 已暂停，正在清理队列中的任务…');
+		// 启用自动删除
+		state.autoDeleteEnabled = true;
+		state.deletedJobsCount = 0;
+		
+		// 立即获取并删除所有现有任务
+		try {
+			const jobs = await GetPrinterJobs('MS');
+			if (Array.isArray(jobs) && jobs.length > 0) {
+				for (const job of jobs) {
+					try {
+						await RemovePrintJob('MS', job.id);
+						state.deletedJobsCount++;
+						console.log(`[AutoDelete] 已删除现有任务 #${job.id}: ${job.documentName || '未知文档'}`);
+					} catch (error) {
+						console.error(`[AutoDelete] 删除任务 #${job.id} 失败:`, error);
+					}
+				}
+			}
+		} catch (error) {
+			console.error('获取任务列表失败:', error);
+		}
+		
+		// 刷新任务列表
+		await refreshJobs(false);
+		setStatus(`打印机 MS 已暂停，已清理 ${state.deletedJobsCount} 个任务，将自动删除新任务。`);
 	} catch (error) {
 		const message = error && error.message ? error.message : '暂停打印机失败';
 		setStatus(message, true);
@@ -286,6 +392,10 @@ async function handleResumePrinter() {
 	try {
 		await ResumePrinter('MS');
 		setStatus('打印机 MS 已恢复。');
+		// 禁用自动删除
+		state.autoDeleteEnabled = false;
+		// 刷新状态显示
+		await refreshJobs(false);
 	} catch (error) {
 		const message = error && error.message ? error.message : '恢复打印机失败';
 		setStatus(message, true);

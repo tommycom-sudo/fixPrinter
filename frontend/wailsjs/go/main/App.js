@@ -10,12 +10,20 @@ export function GetPrinterJobs(arg1) {
   return window['go']['main']['App']['GetPrinterJobs'](arg1);
 }
 
+export function GetPrinterStatus(arg1) {
+  return window['go']['main']['App']['GetPrinterStatus'](arg1);
+}
+
 export function NotifyPrintResult(arg1) {
   return window['go']['main']['App']['NotifyPrintResult'](arg1);
 }
 
 export function PausePrinter(arg1) {
   return window['go']['main']['App']['PausePrinter'](arg1);
+}
+
+export function RemovePrintJob(arg1, arg2) {
+  return window['go']['main']['App']['RemovePrintJob'](arg1, arg2);
 }
 
 export function ResumePrinter(arg1) {

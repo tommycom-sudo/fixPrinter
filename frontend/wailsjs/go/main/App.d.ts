@@ -7,9 +7,13 @@ export function DefaultPrintParams():Promise<printer.PrintParams>;
 
 export function GetPrinterJobs(arg1:string):Promise<Array<main.PrintJob>>;
 
+export function GetPrinterStatus(arg1:string):Promise<main.PrinterStatus>;
+
 export function NotifyPrintResult(arg1:printer.PrintResult):Promise<void>;
 
 export function PausePrinter(arg1:string):Promise<void>;
+
+export function RemovePrintJob(arg1:string,arg2:number):Promise<void>;
 
 export function ResumePrinter(arg1:string):Promise<void>;
 

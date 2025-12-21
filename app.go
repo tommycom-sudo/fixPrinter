@@ -119,6 +119,70 @@ func (a *App) ResumePrinter(name string) error {
 	return nil
 }
 
+// PrinterStatus represents the status information of a printer.
+type PrinterStatus struct {
+	Name          string `json:"name"`
+	PrinterStatus int    `json:"printerStatus"`
+	StartTime     int    `json:"startTime"`
+	UntilTime     int    `json:"untilTime"`
+	IsPaused      bool   `json:"isPaused"`
+}
+
+// GetPrinterStatus returns the status information of the specified printer.
+func (a *App) GetPrinterStatus(name string) (*PrinterStatus, error) {
+	target := strings.TrimSpace(name)
+	if target == "" {
+		target = "MS"
+	}
+
+	script := fmt.Sprintf(`$ErrorActionPreference='Stop';
+$OutputEncoding=[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();
+$printer = Get-Printer -Name %q;
+$isPaused = (($printer.StartTime -eq 0) -and ($printer.UntilTime -eq 2));
+$status = @{
+    name = $printer.Name;
+    printerStatus = $printer.PrinterStatus;
+    startTime = $printer.StartTime;
+    untilTime = $printer.UntilTime;
+    isPaused = $isPaused;
+};
+$status | ConvertTo-Json -Depth 3`, target)
+
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", script)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("get printer status for %s failed: %w: %s", target, err, strings.TrimSpace(string(output)))
+	}
+
+	raw := strings.TrimSpace(string(output))
+	var status PrinterStatus
+	if err := json.Unmarshal([]byte(raw), &status); err != nil {
+		return nil, fmt.Errorf("decode printer status for %s: %w", target, err)
+	}
+
+	return &status, nil
+}
+
+// RemovePrintJob deletes a print job from the specified printer.
+func (a *App) RemovePrintJob(printerName string, jobID int) error {
+	target := strings.TrimSpace(printerName)
+	if target == "" {
+		target = "MS"
+	}
+
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", fmt.Sprintf("Remove-PrintJob -PrinterName %q -ID %d", target, jobID))
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("remove print job %d from printer %s failed: %w: %s", jobID, target, err, strings.TrimSpace(string(output)))
+	}
+
+	return nil
+}
+
 // GetPrinterJobs returns the current print queue items for the requested printer (default: MS).
 func (a *App) GetPrinterJobs(name string) ([]PrintJob, error) {
 	target := strings.TrimSpace(name)
