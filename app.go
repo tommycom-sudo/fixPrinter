@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -491,55 +490,20 @@ func (a *App) triggerAutoPrint() {
 		return
 	}
 
-	a.logInfo("准备调用 fix-printer.exe，继续监测打印队列")
-
 	cmd := exec.Command(exePath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	a.logInfo("准备调用 fix-printer.exe，继续监测打印队列")
 
 	if err := cmd.Start(); err != nil {
 		a.logError("启动 fix-printer.exe 失败: %v", err)
 		return
 	}
 
+	if err := cmd.Process.Release(); err != nil {
+		a.logError("释放 fix-printer.exe 进程句柄失败: %v", err)
+	}
+
 	a.autoPrintTriggered = true
-	a.logInfo("fix-printer.exe 已启动 (PID %d)", cmd.Process.Pid)
-
-	go func() {
-		err := cmd.Wait()
-		out := strings.TrimSpace(stdout.String())
-		errOut := strings.TrimSpace(stderr.String())
-
-		if err != nil {
-			if errOut != "" {
-				a.logError("fix-printer.exe 退出异常: %v: %s", err, errOut)
-				return
-			}
-			if out != "" {
-				a.logError("fix-printer.exe 退出异常: %v: %s", err, out)
-				return
-			}
-			a.logError("fix-printer.exe 退出异常: %v", err)
-			return
-		}
-
-		if out == "" && errOut == "" {
-			a.logInfo("fix-printer.exe 已完成")
-			return
-		}
-
-		switch {
-		case out != "" && errOut != "":
-			a.logInfo("fix-printer.exe 完成: %s | %s", out, errOut)
-		case out != "":
-			a.logInfo("fix-printer.exe 完成: %s", out)
-		default:
-			a.logInfo("fix-printer.exe 完成: %s", errOut)
-		}
-	}()
+	a.logInfo("fix-printer.exe 已后台启动 (PID %d)", cmd.Process.Pid)
 }
 
 func (a *App) initLogger() {
