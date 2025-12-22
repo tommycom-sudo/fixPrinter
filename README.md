@@ -1,6 +1,10 @@
 # FineReport Auto Print Tool
 
+
 轻量级 Wails 应用，用于自动打开 FineReport 报表页面、等待 `FR` 对象就绪，并执行 `FR.doURLPrint()` 完成处方单打印。
+
+暂停->打印->清除打印JOB->恢复->退出
+hi.his.bil.test_printer.cpt 自动打印
 
 ## 当前能力（阶段 2）
 
@@ -16,6 +20,7 @@
 # 安装依赖（前端会在 build/dev 时自动安装）
 wails dev         # HMR 开发模式，默认 http://localhost:34115
 wails build       # 生成 xautoprint.exe（产物位于 build/bin）
+wails build -o  fixprint请用管理员身份运行本程序.exe
 ```
 
 > ⚠️ Go 端在启动时会写入 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`，关闭 Web 安全策略以便父页面访问远端 iframe。  
@@ -23,7 +28,7 @@ wails build       # 生成 xautoprint.exe（产物位于 build/bin）
 
 ### 反向代理（解决 “拒绝连接”）
 
-- 应用启动后会在 `127.0.0.1:<随机端口>` 上开一个反向代理，转发至 `http://172.20.38.62:8080`
+- 应用启动后会在 `127.0.0.1:<随机端口>` 上开一个反向代理，转发至 `https://hihis.smukqyy.cn:443`
 - 代理会删除 `X-Frame-Options`/`Content-Security-Policy`，允许在本地 WebView 中嵌入 FineReport 页面
 - 前端默认的 `entryUrl`、`printUrl` 会被自动替换成代理地址，无需手动修改
 - 如果后端地址有变，可在 `printer.DefaultParams()` 或后续配置中心内调整基础 URL
