@@ -1,0 +1,35 @@
+2025/12/22 15:33:26.616300 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 15:33:26.616815 FineReport proxy ready: http://172.20.38.62:8080 -> http://127.0.0.1:59250
+2025/12/22 15:33:33.668075 [INFO] 检测到 FinePrint.exe，已暂停打印机，等待队列出现任务
+2025/12/22 15:33:33.668075 [INFO] 已触发自动执行打印
+2025/12/22 17:55:59.775457 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 17:55:59.776034 FineReport proxy ready: http://127.0.0.1:62773 -> https://hihis.smukqyy.cn:80
+2025/12/22 17:57:46.181887 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 17:57:46.182952 FineReport proxy ready: http://127.0.0.1:57685 -> https://hihis.smukqyy.cn:80
+2025/12/22 17:58:13.433552 http: proxy error: tls: first record does not look like a TLS handshake
+2025/12/22 18:00:11.667241 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 18:00:11.667783 FineReport proxy ready: http://127.0.0.1:55388 -> https://hihis.smukqyy.cn:80
+2025/12/22 18:16:31.424318 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 18:18:24.023809 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 18:18:50.217586 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 18:20:37.018215 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 18:20:37.018757 FineReport proxy ready: http://127.0.0.1:63570 -> http://hihis.smukqyy.cn:80
+2025/12/22 18:52:36.112448 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 18:52:36.112993 FineReport proxy ready: http://127.0.0.1:57532 -> http://hihis.smukqyy.cn:80
+2025/12/22 18:57:18.643649 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 18:57:18.643649 FineReport proxy ready: http://127.0.0.1:53581 -> https://hihis.smukqyy.cn
+2025/12/22 18:58:16.486073 [INFO] 检测到 FinePrint.exe，已暂停打印机，等待队列出现任务
+2025/12/22 18:58:16.486715 [INFO] 已触发自动执行打印
+2025/12/22 18:59:41.438340 [INFO] 已发送自动打印命令，正在等待任务进入队列
+2025/12/22 19:31:53.763106 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 19:31:53.763654 FineReport proxy ready: http://127.0.0.1:61569 -> https://hihis.smukqyy.cn
+2025/12/22 19:32:01.023327 [INFO] 检测到 FinePrint.exe，已暂停打印机，等待队列出现任务
+2025/12/22 19:32:01.024327 [INFO] 已触发自动执行打印
+2025/12/22 19:52:26.985388 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 19:52:26.985932 FineReport proxy ready: http://127.0.0.1:55136 -> https://hihis.smukqyy.cn
+2025/12/22 19:52:34.627305 [INFO] 检测到 FinePrint.exe，已暂停打印机，等待队列出现任务
+2025/12/22 19:52:34.627305 [INFO] 已触发自动执行打印
+2025/12/22 20:04:44.283195 [INFO] 日志输出已写入 C:\java\xautoprint\logs\autoprint.log
+2025/12/22 20:04:44.283755 FineReport proxy ready: http://127.0.0.1:50706 -> https://hihis.smukqyy.cn
+2025/12/22 20:04:51.885692 [INFO] 检测到 FinePrint.exe，已暂停打印机，等待队列出现任务
+2025/12/22 20:04:51.886352 [INFO] 已触发自动执行打印

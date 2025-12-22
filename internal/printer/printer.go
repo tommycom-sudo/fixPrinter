@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	defaultEntryURL         = "http://172.20.38.62:8080/webroot/decision/view/report?viewlet=hi%252Fhis%252Fbil%252Ftest_printer.cpt&ref_t=design&op=view&ref_c=093def84-95a2-4eaf-af61-61dc90a4d043"
-	defaultPrintURL         = "http://172.20.38.62:8080/webroot/decision/view/report"
+	defaultEntryURL         = "https://hihis.smukqyy.cn/webroot/decision/view/report?viewlet=hi%252Fhis%252Fbil%252Ftest_printer.cpt&ref_t=design&op=view&ref_c=093def84-95a2-4eaf-af61-61dc90a4d043"
+	defaultPrintURL         = "https://hihis.smukqyy.cn/webroot/decision/view/report"
 	defaultWaitTimeout      = 45 * time.Second
 	defaultReadyInterval    = 400 * time.Millisecond
 	defaultFrameLoadTimeout = 25 * time.Second
