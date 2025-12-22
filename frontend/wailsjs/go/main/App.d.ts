@@ -9,12 +9,18 @@ export function GetPrinterJobs(arg1:string):Promise<Array<main.PrintJob>>;
 
 export function GetPrinterStatus(arg1:string):Promise<main.PrinterStatus>;
 
+export function HideWindow():Promise<void>;
+
 export function NotifyPrintResult(arg1:printer.PrintResult):Promise<void>;
 
 export function PausePrinter(arg1:string):Promise<void>;
 
+export function QuitApp():Promise<void>;
+
 export function RemovePrintJob(arg1:string,arg2:number):Promise<void>;
 
 export function ResumePrinter(arg1:string):Promise<void>;
+
+export function ShowWindow():Promise<void>;
 
 export function StartPrint(arg1:printer.PrintParams):Promise<printer.PrintResult>;

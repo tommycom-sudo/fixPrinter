@@ -10,7 +10,9 @@ import {
 	GetPrinterJobs,
 	GetPrinterStatus,
 	RemovePrintJob,
+	HideWindow,
 } from '../wailsjs/go/main/App';
+import { WindowHide } from '../wailsjs/runtime/runtime';
 
 const state = {
 	defaultPayload: null,
@@ -402,6 +404,11 @@ async function handleResumePrinter() {
 	}
 }
 
+function handleHideWindow() {
+	HideWindow();
+	setStatus('窗口已隐藏到系统托盘');
+}
+
 function bindEvents() {
 	dom.printButton.addEventListener('click', handlePrint);
 	dom.resetButton.addEventListener('click', loadDefaults);
@@ -410,6 +417,9 @@ function bindEvents() {
 	}
 	if (dom.resumeButton) {
 		dom.resumeButton.addEventListener('click', handleResumePrinter);
+	}
+	if (dom.hideWindowButton) {
+		dom.hideWindowButton.addEventListener('click', handleHideWindow);
 	}
 	if (dom.refreshJobsButton) {
 		dom.refreshJobsButton.addEventListener('click', () => refreshJobs(true));
@@ -438,6 +448,7 @@ function mountUI() {
               <button id="reset-btn" class="ghost">恢复默认</button>
               <button id="pause-btn" class="ghost ghost--warn">暂停打印机</button>
               <button id="resume-btn" class="ghost ghost--success">恢复打印机</button>
+              <button id="hide-window-btn" class="ghost" title="最小化到系统托盘">最小化到托盘</button>
               <button id="print-btn">执行打印</button>
             </div>
           </div>
@@ -448,7 +459,9 @@ function mountUI() {
             <h2>FineReport 会话</h2>
           </div>
           <div class="preview__body">
-            <iframe id="report-frame" title="FineReport session"></iframe>
+            <div class="preview__iframe-wrapper">
+              <iframe id="report-frame" title="FineReport session" scrolling="yes"></iframe>
+            </div>
             <p class="preview__hint">
               该视图仅用于加载远端报表并执行打印命令，不会在界面中暴露处方数据。
             </p>
@@ -492,6 +505,7 @@ function mountUI() {
 	dom.resetButton = document.getElementById('reset-btn');
 	dom.pauseButton = document.getElementById('pause-btn');
 	dom.resumeButton = document.getElementById('resume-btn');
+	dom.hideWindowButton = document.getElementById('hide-window-btn');
 	dom.status = document.getElementById('status-text');
 	dom.previewFrame = document.getElementById('report-frame');
 	dom.jobsTable = document.getElementById('jobs-table');
@@ -512,6 +526,8 @@ async function bootstrap() {
 	await loadDefaults();
 	window.addEventListener('beforeunload', stopJobsMonitor);
 	startJobsMonitor();
+	
+	// Window is already hidden via StartHidden option, no need to hide again
 }
 
 bootstrap();

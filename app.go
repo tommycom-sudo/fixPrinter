@@ -18,11 +18,12 @@ import (
 
 // App struct
 type App struct {
-	ctx        context.Context
-	printer    *printer.Service
-	proxy      *proxy.Server
-	proxyBase  string
-	remoteBase string
+	ctx             context.Context
+	printer         *printer.Service
+	proxy           *proxy.Server
+	proxyBase       string
+	remoteBase      string
+	isWindowVisible bool
 }
 
 // PrintJob captures a subset of properties returned by Get-PrintJob.
@@ -50,6 +51,20 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.printer.SetContext(ctx)
 	a.startProxy(ctx)
+
+	// Window is already hidden via StartHidden option
+	a.isWindowVisible = false
+}
+
+// OnBeforeClose is called when the window is about to close
+// Return true to prevent the window from closing
+func (a *App) OnBeforeClose(ctx context.Context) bool {
+	// Hide window instead of closing
+	a.HideWindow()
+	// Update tray menu items
+	updateTrayMenuOnHide()
+	// Return true to prevent default close behavior
+	return true
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -57,6 +72,30 @@ func (a *App) shutdown(ctx context.Context) {
 		if err := a.proxy.Stop(ctx); err != nil {
 			runtime.LogError(ctx, "stop proxy: "+err.Error())
 		}
+	}
+}
+
+// ShowWindow shows the main window
+func (a *App) ShowWindow() {
+	if a.ctx != nil {
+		runtime.WindowShow(a.ctx)
+		runtime.WindowUnminimise(a.ctx)
+		a.isWindowVisible = true
+	}
+}
+
+// HideWindow hides the main window
+func (a *App) HideWindow() {
+	if a.ctx != nil {
+		runtime.WindowHide(a.ctx)
+		a.isWindowVisible = false
+	}
+}
+
+// QuitApp quits the application
+func (a *App) QuitApp() {
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
 	}
 }
 

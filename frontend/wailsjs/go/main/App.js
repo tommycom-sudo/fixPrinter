@@ -14,6 +14,10 @@ export function GetPrinterStatus(arg1) {
   return window['go']['main']['App']['GetPrinterStatus'](arg1);
 }
 
+export function HideWindow() {
+  return window['go']['main']['App']['HideWindow']();
+}
+
 export function NotifyPrintResult(arg1) {
   return window['go']['main']['App']['NotifyPrintResult'](arg1);
 }
@@ -22,12 +26,20 @@ export function PausePrinter(arg1) {
   return window['go']['main']['App']['PausePrinter'](arg1);
 }
 
+export function QuitApp() {
+  return window['go']['main']['App']['QuitApp']();
+}
+
 export function RemovePrintJob(arg1, arg2) {
   return window['go']['main']['App']['RemovePrintJob'](arg1, arg2);
 }
 
 export function ResumePrinter(arg1) {
   return window['go']['main']['App']['ResumePrinter'](arg1);
+}
+
+export function ShowWindow() {
+  return window['go']['main']['App']['ShowWindow']();
 }
 
 export function StartPrint(arg1) {

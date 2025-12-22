@@ -33,17 +33,22 @@ func main() {
 	// Create an instance of the app structure
 	app := NewApp()
 
+	// Start systray in a goroutine
+	go setupTray(app)
+
 	// Create application with options
 	err := wails.Run(&options.App{
-		Title:  "fine-report-printer",
-		Width:  1024,
-		Height: 768,
+		Title:       "fine-report-printer",
+		Width:       1024,
+		Height:      768,
+		StartHidden: true, // Start hidden (minimize to tray)
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
+		OnBeforeClose:    app.OnBeforeClose,
 		Bind: []interface{}{
 			app,
 		},
