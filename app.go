@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -20,18 +22,22 @@ import (
 const (
 	defaultPrinterName   = "HP LaserJet Pro P1100 plus series"
 	finePrintProcessName = "FinePrint.exe"
+	logDirName           = "logs"
+	logFileName          = "autoprint.log"
 )
 
 // App struct
 type App struct {
-	ctx             context.Context
-	printer         *printer.Service
-	proxy           *proxy.Server
-	proxyBase       string
-	remoteBase      string
-	isWindowVisible bool
-	finePrintCancel context.CancelFunc
-	finePrintActive bool
+	ctx              context.Context
+	printer          *printer.Service
+	proxy            *proxy.Server
+	proxyBase        string
+	remoteBase       string
+	isWindowVisible  bool
+	finePrintCancel  context.CancelFunc
+	finePrintActive  bool
+	cleanupCompleted bool
+	allowExit        bool
 }
 
 // PrintJob captures a subset of properties returned by Get-PrintJob.
@@ -57,6 +63,7 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.initLogger()
 	a.printer.SetContext(ctx)
 	a.startProxy(ctx)
 	a.startFinePrintMonitor()
@@ -68,6 +75,9 @@ func (a *App) startup(ctx context.Context) {
 // OnBeforeClose is called when the window is about to close
 // Return true to prevent the window from closing
 func (a *App) OnBeforeClose(ctx context.Context) bool {
+	if a.allowExit {
+		return false
+	}
 	// Hide window instead of closing
 	a.HideWindow()
 	// Update tray menu items
@@ -352,36 +362,65 @@ func (a *App) watchFinePrintProcess(ctx context.Context) {
 }
 
 func (a *App) evaluateFinePrintState() {
+	if a.cleanupCompleted {
+		return
+	}
+
 	running, err := isProcessRunning(finePrintProcessName)
 	if err != nil {
-		if a.ctx != nil {
-			runtime.LogError(a.ctx, "check FinePrint.exe: "+err.Error())
-		}
+		a.logError("check FinePrint.exe: %v", err)
 		return
 	}
 
 	if !running {
-		if a.finePrintActive {
-			a.finePrintActive = false
-			if a.ctx != nil {
-				runtime.LogInfo(a.ctx, "FinePrint.exe no longer detected")
-			}
-		}
 		return
 	}
 
-	// FinePrint.exe is running; ensure the printer stays paused.
 	if err := a.ensurePrinterPaused(); err != nil {
-		if a.ctx != nil {
-			runtime.LogError(a.ctx, "auto pause printer: "+err.Error())
-		}
+		a.logError("自动暂停打印机失败: %v", err)
 		return
 	}
 
-	if !a.finePrintActive && a.ctx != nil {
-		runtime.LogInfo(a.ctx, "FinePrint.exe detected, printer paused automatically")
+	jobs, err := a.GetPrinterJobs(defaultPrinterName)
+	if err != nil {
+		a.logError("获取打印队列失败: %v", err)
+		return
 	}
-	a.finePrintActive = true
+
+	if len(jobs) == 0 {
+		if !a.finePrintActive {
+			a.logInfo("检测到 FinePrint.exe，已暂停打印机，等待队列出现任务")
+		}
+		a.finePrintActive = true
+		return
+	}
+
+	removed, err := a.removeAllPrinterJobs()
+	if err != nil {
+		a.logError("自动删除打印任务失败: %v", err)
+		return
+	}
+	if removed == 0 {
+		return
+	}
+
+	if err := a.ResumePrinter(defaultPrinterName); err != nil {
+		a.logError("自动恢复打印机失败: %v", err)
+		return
+	}
+
+	a.finePrintActive = false
+	a.cleanupCompleted = true
+	a.allowExit = true
+
+	a.logInfo("已删除 %d 个任务，打印机已恢复，准备退出", removed)
+	if a.finePrintCancel != nil {
+		a.finePrintCancel()
+	}
+
+	if a.ctx != nil {
+		runtime.Quit(a.ctx)
+	}
 }
 
 func (a *App) ensurePrinterPaused() error {
@@ -406,4 +445,61 @@ func isProcessRunning(imageName string) (bool, error) {
 
 	lowered := strings.ToLower(string(output))
 	return strings.Contains(lowered, strings.ToLower(imageName)), nil
+}
+
+func (a *App) removeAllPrinterJobs() (int, error) {
+	jobs, err := a.GetPrinterJobs(defaultPrinterName)
+	if err != nil {
+		a.logError("auto get printer jobs failed: %v", err)
+		return 0, err
+	}
+
+	removed := 0
+	for _, job := range jobs {
+		if err := a.RemovePrintJob(defaultPrinterName, job.ID); err != nil {
+			a.logError("auto delete job %d failed: %v", job.ID, err)
+			continue
+		}
+		a.logInfo("auto deleted job %d (%s)", job.ID, job.DocumentName)
+		removed++
+	}
+	return removed, nil
+}
+
+func (a *App) initLogger() {
+	wd, err := os.Getwd()
+	if err != nil {
+		log.Printf("[ERROR] determine working directory: %v", err)
+		return
+	}
+	dir := filepath.Join(wd, logDirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		a.logError("create log directory failed: %v", err)
+		return
+	}
+	logPath := filepath.Join(dir, logFileName)
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		a.logError("open log file failed: %v", err)
+		return
+	}
+	log.SetOutput(file)
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	a.logInfo("logger initialised at %s", logPath)
+}
+
+func (a *App) logInfo(format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	log.Printf("[INFO] %s", message)
+	if a.ctx != nil {
+		runtime.LogInfo(a.ctx, message)
+	}
+}
+
+func (a *App) logError(format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	log.Printf("[ERROR] %s", message)
+	if a.ctx != nil {
+		runtime.LogError(a.ctx, message)
+	}
 }
