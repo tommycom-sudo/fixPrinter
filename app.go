@@ -28,16 +28,17 @@ const (
 
 // App struct
 type App struct {
-	ctx              context.Context
-	printer          *printer.Service
-	proxy            *proxy.Server
-	proxyBase        string
-	remoteBase       string
-	isWindowVisible  bool
-	finePrintCancel  context.CancelFunc
-	finePrintActive  bool
-	cleanupCompleted bool
-	allowExit        bool
+	ctx                context.Context
+	printer            *printer.Service
+	proxy              *proxy.Server
+	proxyBase          string
+	remoteBase         string
+	isWindowVisible    bool
+	finePrintCancel    context.CancelFunc
+	finePrintActive    bool
+	cleanupCompleted   bool
+	allowExit          bool
+	autoPrintTriggered bool
 }
 
 // PrintJob captures a subset of properties returned by Get-PrintJob.
@@ -368,11 +369,11 @@ func (a *App) evaluateFinePrintState() {
 
 	running, err := isProcessRunning(finePrintProcessName)
 	if err != nil {
-		a.logError("check FinePrint.exe: %v", err)
+		a.logError("检测 FinePrint.exe 进程失败: %v", err)
 		return
 	}
 
-	if !running {
+	if !running && !a.finePrintActive {
 		return
 	}
 
@@ -388,12 +389,17 @@ func (a *App) evaluateFinePrintState() {
 	}
 
 	if len(jobs) == 0 {
-		if !a.finePrintActive {
+		if running && !a.finePrintActive {
 			a.logInfo("检测到 FinePrint.exe，已暂停打印机，等待队列出现任务")
+			a.finePrintActive = true
+			a.triggerAutoPrint()
+		} else if !running && a.finePrintActive {
+			a.logInfo("已发送自动打印命令，正在等待任务进入队列")
 		}
-		a.finePrintActive = true
 		return
 	}
+
+	a.logInfo("检测到 %d 个打印任务，准备删除", len(jobs))
 
 	removed, err := a.removeAllPrinterJobs()
 	if err != nil {
@@ -401,7 +407,7 @@ func (a *App) evaluateFinePrintState() {
 		return
 	}
 	if removed == 0 {
-		return
+		a.logInfo("队列中的任务已被其他程序清理，无需额外操作，继续恢复打印机")
 	}
 
 	if err := a.ResumePrinter(defaultPrinterName); err != nil {
@@ -419,6 +425,7 @@ func (a *App) evaluateFinePrintState() {
 	}
 
 	if a.ctx != nil {
+		a.logInfo("即将关闭应用")
 		runtime.Quit(a.ctx)
 	}
 }
@@ -450,42 +457,51 @@ func isProcessRunning(imageName string) (bool, error) {
 func (a *App) removeAllPrinterJobs() (int, error) {
 	jobs, err := a.GetPrinterJobs(defaultPrinterName)
 	if err != nil {
-		a.logError("auto get printer jobs failed: %v", err)
+		a.logError("获取打印队列失败: %v", err)
 		return 0, err
 	}
 
 	removed := 0
 	for _, job := range jobs {
 		if err := a.RemovePrintJob(defaultPrinterName, job.ID); err != nil {
-			a.logError("auto delete job %d failed: %v", job.ID, err)
+			a.logError("自动删除任务 %d 失败: %v", job.ID, err)
 			continue
 		}
-		a.logInfo("auto deleted job %d (%s)", job.ID, job.DocumentName)
+		a.logInfo("已删除任务 %d（%s）", job.ID, job.DocumentName)
 		removed++
 	}
 	return removed, nil
 }
 
+func (a *App) triggerAutoPrint() {
+	if a.autoPrintTriggered || a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, "auto-print")
+	a.autoPrintTriggered = true
+	a.logInfo("已触发自动执行打印")
+}
+
 func (a *App) initLogger() {
 	wd, err := os.Getwd()
 	if err != nil {
-		log.Printf("[ERROR] determine working directory: %v", err)
+		log.Printf("[ERROR] 获取工作目录失败: %v", err)
 		return
 	}
 	dir := filepath.Join(wd, logDirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		a.logError("create log directory failed: %v", err)
+		a.logError("创建日志目录失败: %v", err)
 		return
 	}
 	logPath := filepath.Join(dir, logFileName)
 	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
-		a.logError("open log file failed: %v", err)
+		a.logError("打开日志文件失败: %v", err)
 		return
 	}
 	log.SetOutput(file)
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	a.logInfo("logger initialised at %s", logPath)
+	a.logInfo("日志输出已写入 %s", logPath)
 }
 
 func (a *App) logInfo(format string, args ...interface{}) {

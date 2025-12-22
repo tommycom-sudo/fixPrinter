@@ -10,6 +10,7 @@ import {
 	RemovePrintJob,
 	HideWindow,
 } from '../wailsjs/go/main/App';
+import { EventsOn } from '../wailsjs/runtime/runtime';
 
 const PRINTER_NAME = 'HP LaserJet Pro P1100 plus series';
 
@@ -22,6 +23,8 @@ const state = {
 	autoDeleteEnabled: false,
 	deletedJobsCount: 0,
 };
+
+let autoPrintOff = null;
 
 const dom = {};
 
@@ -372,6 +375,23 @@ function handleHideWindow() {
 	setStatus('窗口已隐藏到系统托盘');
 }
 
+function setupAutoPrintListener() {
+	if (autoPrintOff) {
+		autoPrintOff();
+	}
+	autoPrintOff = EventsOn('auto-print', () => {
+		setStatus('检测到 FinePrint，正在自动执行打印…');
+		handlePrint();
+	});
+}
+
+function cleanupAutoPrintListener() {
+	if (autoPrintOff) {
+		autoPrintOff();
+		autoPrintOff = null;
+	}
+}
+
 function bindEvents() {
 	dom.printButton.addEventListener('click', handlePrint);
 	dom.resetButton.addEventListener('click', loadDefaults);
@@ -481,13 +501,16 @@ function mountUI() {
 async function bootstrap() {
 	mountUI();
 	bindEvents();
+	setupAutoPrintListener();
 
 	await loadDefaults();
-	window.addEventListener('beforeunload', stopJobsMonitor);
+	window.addEventListener('beforeunload', () => {
+		cleanupAutoPrintListener();
+		stopJobsMonitor();
+	});
 	startJobsMonitor();
 	
 	// Window is already hidden via StartHidden option, no need to hide again
 }
 
 bootstrap();
-
