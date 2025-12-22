@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"time"
 
 	"fine-report-printer/internal/printer"
 	"fine-report-printer/internal/proxy"
@@ -16,7 +17,10 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const defaultPrinterName = "HP LaserJet Pro P1100 plus series"
+const (
+	defaultPrinterName   = "HP LaserJet Pro P1100 plus series"
+	finePrintProcessName = "FinePrint.exe"
+)
 
 // App struct
 type App struct {
@@ -26,6 +30,8 @@ type App struct {
 	proxyBase       string
 	remoteBase      string
 	isWindowVisible bool
+	finePrintCancel context.CancelFunc
+	finePrintActive bool
 }
 
 // PrintJob captures a subset of properties returned by Get-PrintJob.
@@ -53,6 +59,7 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.printer.SetContext(ctx)
 	a.startProxy(ctx)
+	a.startFinePrintMonitor()
 
 	// Window is already hidden via StartHidden option
 	a.isWindowVisible = false
@@ -70,6 +77,9 @@ func (a *App) OnBeforeClose(ctx context.Context) bool {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	if a.finePrintCancel != nil {
+		a.finePrintCancel()
+	}
 	if a.proxy != nil {
 		if err := a.proxy.Stop(ctx); err != nil {
 			runtime.LogError(ctx, "stop proxy: "+err.Error())
@@ -314,4 +324,86 @@ func swapBase(raw, from, to string) string {
 		return to + strings.TrimPrefix(raw, from)
 	}
 	return raw
+}
+
+func (a *App) startFinePrintMonitor() {
+	if a.finePrintCancel != nil {
+		a.finePrintCancel()
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	a.finePrintCancel = cancel
+
+	go a.watchFinePrintProcess(ctx)
+}
+
+func (a *App) watchFinePrintProcess(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.evaluateFinePrintState()
+		}
+	}
+}
+
+func (a *App) evaluateFinePrintState() {
+	running, err := isProcessRunning(finePrintProcessName)
+	if err != nil {
+		if a.ctx != nil {
+			runtime.LogError(a.ctx, "check FinePrint.exe: "+err.Error())
+		}
+		return
+	}
+
+	if !running {
+		if a.finePrintActive {
+			a.finePrintActive = false
+			if a.ctx != nil {
+				runtime.LogInfo(a.ctx, "FinePrint.exe no longer detected")
+			}
+		}
+		return
+	}
+
+	// FinePrint.exe is running; ensure the printer stays paused.
+	if err := a.ensurePrinterPaused(); err != nil {
+		if a.ctx != nil {
+			runtime.LogError(a.ctx, "auto pause printer: "+err.Error())
+		}
+		return
+	}
+
+	if !a.finePrintActive && a.ctx != nil {
+		runtime.LogInfo(a.ctx, "FinePrint.exe detected, printer paused automatically")
+	}
+	a.finePrintActive = true
+}
+
+func (a *App) ensurePrinterPaused() error {
+	status, err := a.GetPrinterStatus(defaultPrinterName)
+	if err != nil {
+		return err
+	}
+	if status != nil && status.IsPaused {
+		return nil
+	}
+	return a.PausePrinter(defaultPrinterName)
+}
+
+func isProcessRunning(imageName string) (bool, error) {
+	cmd := exec.Command("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", imageName))
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("tasklist: %w", err)
+	}
+
+	lowered := strings.ToLower(string(output))
+	return strings.Contains(lowered, strings.ToLower(imageName)), nil
 }
