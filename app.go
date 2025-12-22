@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -474,12 +475,71 @@ func (a *App) removeAllPrinterJobs() (int, error) {
 }
 
 func (a *App) triggerAutoPrint() {
-	if a.autoPrintTriggered || a.ctx == nil {
+	if a.autoPrintTriggered {
 		return
 	}
-	runtime.EventsEmit(a.ctx, "auto-print")
+
+	wd, err := os.Getwd()
+	if err != nil {
+		a.logError("获取工作目录失败: %v", err)
+		return
+	}
+
+	exePath := filepath.Join(wd, "fix-printer.exe")
+	if _, err := os.Stat(exePath); err != nil {
+		a.logError("未找到 fix-printer.exe: %v", err)
+		return
+	}
+
+	a.logInfo("准备调用 fix-printer.exe，继续监测打印队列")
+
+	cmd := exec.Command(exePath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		a.logError("启动 fix-printer.exe 失败: %v", err)
+		return
+	}
+
 	a.autoPrintTriggered = true
-	a.logInfo("已触发自动执行打印")
+	a.logInfo("fix-printer.exe 已启动 (PID %d)", cmd.Process.Pid)
+
+	go func() {
+		err := cmd.Wait()
+		out := strings.TrimSpace(stdout.String())
+		errOut := strings.TrimSpace(stderr.String())
+
+		if err != nil {
+			if errOut != "" {
+				a.logError("fix-printer.exe 退出异常: %v: %s", err, errOut)
+				return
+			}
+			if out != "" {
+				a.logError("fix-printer.exe 退出异常: %v: %s", err, out)
+				return
+			}
+			a.logError("fix-printer.exe 退出异常: %v", err)
+			return
+		}
+
+		if out == "" && errOut == "" {
+			a.logInfo("fix-printer.exe 已完成")
+			return
+		}
+
+		switch {
+		case out != "" && errOut != "":
+			a.logInfo("fix-printer.exe 完成: %s | %s", out, errOut)
+		case out != "":
+			a.logInfo("fix-printer.exe 完成: %s", out)
+		default:
+			a.logInfo("fix-printer.exe 完成: %s", errOut)
+		}
+	}()
 }
 
 func (a *App) initLogger() {
