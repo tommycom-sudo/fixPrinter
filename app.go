@@ -151,7 +151,15 @@ func (a *App) PausePrinter(name string) error {
 		return fmt.Errorf("printer name is required")
 	}
 
-	cmd := exec.Command("powershell", "-NoProfile", "-Command", fmt.Sprintf("Set-Printer -Name %q -StartTime 0 -UntilTime 2", target))
+	_, offset := time.Now().Zone()
+	offsetMinutes := offset / 60
+	start := (1440 - offsetMinutes) % 1440
+	if start < 0 {
+		start += 1440
+	}
+	until := (start + 2) % 1440
+
+	cmd := exec.Command("powershell", "-NoProfile", "-Command", fmt.Sprintf("Set-Printer -Name %q -StartTime %d -UntilTime %d", target, start, until))
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
 	output, err := cmd.CombinedOutput()
