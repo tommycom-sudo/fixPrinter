@@ -35,7 +35,7 @@ func onReady() {
 	if iconData != nil {
 		systray.SetIcon(iconData)
 	}
-	systray.SetTooltip("FineReport 自动化打印工具")
+	systray.SetTooltip("FineReport 慢修复")
 
 	// Create menu items
 	showMenuItem = systray.AddMenuItem("显示窗口", "显示主窗口")
