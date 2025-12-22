@@ -16,6 +16,8 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+const defaultPrinterName = "HP LaserJet Pro P1100 plus series"
+
 // App struct
 type App struct {
 	ctx             context.Context
@@ -171,7 +173,7 @@ type PrinterStatus struct {
 func (a *App) GetPrinterStatus(name string) (*PrinterStatus, error) {
 	target := strings.TrimSpace(name)
 	if target == "" {
-		target = "MS"
+		target = defaultPrinterName
 	}
 
 	script := fmt.Sprintf(`$ErrorActionPreference='Stop';
@@ -208,7 +210,7 @@ $status | ConvertTo-Json -Depth 3`, target)
 func (a *App) RemovePrintJob(printerName string, jobID int) error {
 	target := strings.TrimSpace(printerName)
 	if target == "" {
-		target = "MS"
+		target = defaultPrinterName
 	}
 
 	cmd := exec.Command("powershell", "-NoProfile", "-Command", fmt.Sprintf("Remove-PrintJob -PrinterName %q -ID %d", target, jobID))
@@ -222,11 +224,11 @@ func (a *App) RemovePrintJob(printerName string, jobID int) error {
 	return nil
 }
 
-// GetPrinterJobs returns the current print queue items for the requested printer (default: MS).
+// GetPrinterJobs returns the current print queue items for the requested printer (default: HP LaserJet Pro P1100 plus series).
 func (a *App) GetPrinterJobs(name string) ([]PrintJob, error) {
 	target := strings.TrimSpace(name)
 	if target == "" {
-		target = "MS"
+		target = defaultPrinterName
 	}
 
 	script := fmt.Sprintf(`$ErrorActionPreference='Stop';

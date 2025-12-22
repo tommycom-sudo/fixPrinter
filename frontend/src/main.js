@@ -3,8 +3,6 @@ import './app.css';
 
 import {
 	DefaultPrintParams,
-	StartPrint,
-	NotifyPrintResult,
 	PausePrinter,
 	ResumePrinter,
 	GetPrinterJobs,
@@ -12,7 +10,8 @@ import {
 	RemovePrintJob,
 	HideWindow,
 } from '../wailsjs/go/main/App';
-import { WindowHide } from '../wailsjs/runtime/runtime';
+
+const PRINTER_NAME = 'HP LaserJet Pro P1100 plus series';
 
 const state = {
 	defaultPayload: null,
@@ -99,7 +98,7 @@ function renderJobs() {
 
 async function checkPrinterStatus() {
 	try {
-		const status = await GetPrinterStatus('MS');
+		const status = await GetPrinterStatus(PRINTER_NAME);
 		state.printerStatus = status;
 		return status;
 	} catch (error) {
@@ -110,7 +109,7 @@ async function checkPrinterStatus() {
 
 async function refreshJobs(showLoading = false) {
 	if (showLoading) {
-		setJobsStatus('正在提取 MS 打印任务…');
+		setJobsStatus(`正在提取 ${PRINTER_NAME} 打印任务…`);
 	}
 
 	try {
@@ -119,7 +118,7 @@ async function refreshJobs(showLoading = false) {
 		const isPaused = status && status.isPaused;
 
 		// 获取任务列表
-		const jobs = await GetPrinterJobs('MS');
+		const jobs = await GetPrinterJobs(PRINTER_NAME);
 		const previousJobs = state.jobs;
 		state.jobs = Array.isArray(jobs) ? jobs : [];
 
@@ -132,7 +131,7 @@ async function refreshJobs(showLoading = false) {
 			// 删除所有新任务
 			for (const job of newJobs) {
 				try {
-					await RemovePrintJob('MS', job.id);
+					await RemovePrintJob(PRINTER_NAME, job.id);
 					state.deletedJobsCount++;
 					console.log(`[AutoDelete] 已删除任务 #${job.id}: ${job.documentName || '未知文档'}`);
 				} catch (error) {
@@ -142,7 +141,7 @@ async function refreshJobs(showLoading = false) {
 
 			// 如果有新任务被删除，重新获取任务列表
 			if (newJobs.length > 0) {
-				const updatedJobs = await GetPrinterJobs('MS');
+				const updatedJobs = await GetPrinterJobs(PRINTER_NAME);
 				state.jobs = Array.isArray(updatedJobs) ? updatedJobs : [];
 			}
 		}
@@ -153,15 +152,15 @@ async function refreshJobs(showLoading = false) {
 		// 更新状态显示
 		if (isPaused && state.autoDeleteEnabled) {
 			if (count === 0) {
-				setJobsStatus(`MS 打印队列为空（已自动删除 ${state.deletedJobsCount} 个任务）`);
+				setJobsStatus(`${PRINTER_NAME} 打印队列为空（已自动删除 ${state.deletedJobsCount} 个任务）`);
 			} else {
-				setJobsStatus(`MS 队列中有 ${count} 个任务（暂停中，已自动删除 ${state.deletedJobsCount} 个任务）`);
+				setJobsStatus(`${PRINTER_NAME} 队列中有 ${count} 个任务（暂停中，已自动删除 ${state.deletedJobsCount} 个任务）`);
 			}
 		} else {
 			if (count === 0) {
-				setJobsStatus('MS 打印队列为空');
+				setJobsStatus(`${PRINTER_NAME} 打印队列为空`);
 			} else {
-				setJobsStatus(`MS 队列中有 ${count} 个任务`);
+				setJobsStatus(`${PRINTER_NAME} 队列中有 ${count} 个任务`);
 			}
 		}
 	} catch (error) {
@@ -187,11 +186,11 @@ function startJobsMonitor() {
 			console.log('[AutoDelete] 检测到打印机已暂停，启用自动删除功能');
 			// 清理暂停时已有的任务
 			try {
-				const jobs = await GetPrinterJobs('MS');
+				const jobs = await GetPrinterJobs(PRINTER_NAME);
 				if (Array.isArray(jobs) && jobs.length > 0) {
 					for (const job of jobs) {
 						try {
-							await RemovePrintJob('MS', job.id);
+							await RemovePrintJob(PRINTER_NAME, job.id);
 							state.deletedJobsCount++;
 							console.log(`[AutoDelete] 启动时删除现有任务 #${job.id}`);
 						} catch (error) {
@@ -230,6 +229,16 @@ function parsePayload() {
 	} catch (error) {
 		throw new Error(`打印参数 JSON 无效：${error.message}`);
 	}
+}
+
+function resolveEntryUrl(payload) {
+	if (payload.entryUrl && typeof payload.entryUrl === 'string' && payload.entryUrl.trim().length > 0) {
+		return payload.entryUrl.trim();
+	}
+	if (state.defaultPayload && state.defaultPayload.entryUrl) {
+		return state.defaultPayload.entryUrl;
+	}
+	return '';
 }
 
 function buildCacheBustingURL(url) {
@@ -276,58 +285,6 @@ function loadReportFrame(entryUrl, timeout) {
 	});
 }
 
-function waitForFR(frameWindow, timeoutMs, intervalMs) {
-	return new Promise((resolve, reject) => {
-		const started = performance.now();
-		const interval = intervalMs || 300;
-
-		const watcher = setInterval(() => {
-			if (!frameWindow || frameWindow.closed) {
-				clearInterval(watcher);
-				reject(new Error('FineReport 窗口不可用'));
-				return;
-			}
-
-			if (frameWindow.FR && typeof frameWindow.FR.doURLPrint === 'function') {
-				clearInterval(watcher);
-				resolve(frameWindow.FR);
-				return;
-			}
-
-			if (performance.now() - started > timeoutMs) {
-				clearInterval(watcher);
-				reject(new Error('等待 FineReport 对象超时'));
-			}
-		}, interval);
-	});
-}
-
-async function executePrint(payload) {
-	const started = performance.now();
-	const result = {
-		requestId: payload.requestId,
-		success: false,
-	};
-
-	try {
-		const frame = await loadReportFrame(payload.entryUrl, payload.frameLoadTimeoutMs);
-		const win = frame.contentWindow;
-		await waitForFR(win, payload.readyTimeoutMs, payload.readyIntervalMs);
-		win.FR.doURLPrint(payload);
-		result.success = true;
-	} catch (error) {
-		console.error('[AutoPrint] 执行失败', error);
-		result.error = error.message;
-	} finally {
-		result.durationMs = Math.round(performance.now() - started);
-		try {
-			await NotifyPrintResult(result);
-		} catch (notifyErr) {
-			console.error('回传打印结果失败', notifyErr);
-		}
-	}
-}
-
 async function handlePrint() {
 	let payload;
 	try {
@@ -337,16 +294,22 @@ async function handlePrint() {
 		return;
 	}
 
+	const entryUrl = resolveEntryUrl(payload);
+	if (!entryUrl) {
+		setStatus('未配置 entryUrl，无法加载 FineReport 页面', true);
+		return;
+	}
+
+	const frameTimeout = Number(payload.frameLoadTimeoutMs) || 20000;
+
 	setBusy(true);
-	setStatus('正在打开 FineReport 页面并注入打印参数…');
+	setStatus('正在加载 FineReport 页面，请稍候…');
 
 	try {
-		const result = await StartPrint(payload);
-		const duration =
-			result && result.durationMs >= 0 ? `${result.durationMs} ms` : '未知';
-		setStatus(`打印完成（耗时 ${duration}）。`);
+		await loadReportFrame(entryUrl, frameTimeout);
+		setStatus('FineReport 页面已加载，请在上方窗口中手动检查/打印。');
 	} catch (error) {
-		const message = error && error.message ? error.message : '打印失败';
+		const message = error && error.message ? error.message : '加载 FineReport 页面失败';
 		setStatus(message, true);
 	} finally {
 		setBusy(false);
@@ -354,21 +317,21 @@ async function handlePrint() {
 }
 
 async function handlePausePrinter() {
-	setStatus('正在暂停打印机 MS …');
+	setStatus(`正在暂停打印机 ${PRINTER_NAME} …`);
 	try {
-		await PausePrinter('MS');
-		setStatus('打印机 MS 已暂停，正在清理队列中的任务…');
+		await PausePrinter(PRINTER_NAME);
+		setStatus(`打印机 ${PRINTER_NAME} 已暂停，正在清理队列中的任务…`);
 		// 启用自动删除
 		state.autoDeleteEnabled = true;
 		state.deletedJobsCount = 0;
 		
 		// 立即获取并删除所有现有任务
 		try {
-			const jobs = await GetPrinterJobs('MS');
+			const jobs = await GetPrinterJobs(PRINTER_NAME);
 			if (Array.isArray(jobs) && jobs.length > 0) {
 				for (const job of jobs) {
 					try {
-						await RemovePrintJob('MS', job.id);
+						await RemovePrintJob(PRINTER_NAME, job.id);
 						state.deletedJobsCount++;
 						console.log(`[AutoDelete] 已删除现有任务 #${job.id}: ${job.documentName || '未知文档'}`);
 					} catch (error) {
@@ -382,7 +345,7 @@ async function handlePausePrinter() {
 		
 		// 刷新任务列表
 		await refreshJobs(false);
-		setStatus(`打印机 MS 已暂停，已清理 ${state.deletedJobsCount} 个任务，将自动删除新任务。`);
+		setStatus(`打印机 ${PRINTER_NAME} 已暂停，已清理 ${state.deletedJobsCount} 个任务，将自动删除新任务。`);
 	} catch (error) {
 		const message = error && error.message ? error.message : '暂停打印机失败';
 		setStatus(message, true);
@@ -390,10 +353,10 @@ async function handlePausePrinter() {
 }
 
 async function handleResumePrinter() {
-	setStatus('正在恢复打印机 MS …');
+	setStatus(`正在恢复打印机 ${PRINTER_NAME} …`);
 	try {
-		await ResumePrinter('MS');
-		setStatus('打印机 MS 已恢复。');
+		await ResumePrinter(PRINTER_NAME);
+		setStatus(`打印机 ${PRINTER_NAME} 已恢复。`);
 		// 禁用自动删除
 		state.autoDeleteEnabled = false;
 		// 刷新状态显示
@@ -435,7 +398,7 @@ function mountUI() {
           <p class="hero__eyebrow">FineReport 自动化打印</p>
           <h1 class="hero__title">药方快速打印工具</h1>
           <p class="hero__subtitle">
-            自动打开指定报表、等待 FR 对象就绪，并调用 <code>FR.doURLPrint</code> 完成打印。
+            点击“执行打印”后将在下方 iframe 中打开指定报表，方便人工核对并执行打印。
           </p>
         </div>
         <div class="hero__status" id="status-text">正在初始化…</div>
@@ -474,7 +437,7 @@ function mountUI() {
               <button id="refresh-jobs-btn" class="ghost">手动刷新</button>
             </div>
           </div>
-          <div class="jobs__status" id="jobs-status">等待获取 MS 打印队列…</div>
+          <div class="jobs__status" id="jobs-status">等待获取 ${PRINTER_NAME} 打印队列…</div>
           <div class="jobs__table-wrapper">
             <table class="jobs-table jobs-table--hidden" id="jobs-table">
               <thead>
@@ -492,7 +455,7 @@ function mountUI() {
             <div class="jobs__empty" id="jobs-empty">当前打印队列为空</div>
           </div>
           <p class="jobs__hint">
-            每 5 秒调用 <code>Get-PrintJob -PrinterName "MS"</code> 获取任务列表，便于实时监控。
+            每 5 秒调用 <code>Get-PrintJob -PrinterName "${PRINTER_NAME}"</code> 获取任务列表，便于实时监控。
           </p>
         </section>
       </div>
@@ -519,10 +482,6 @@ async function bootstrap() {
 	mountUI();
 	bindEvents();
 
-	window.__xAutoPrint = {
-		start: executePrint,
-	};
-
 	await loadDefaults();
 	window.addEventListener('beforeunload', stopJobsMonitor);
 	startJobsMonitor();
@@ -531,3 +490,4 @@ async function bootstrap() {
 }
 
 bootstrap();
+
