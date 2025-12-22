@@ -8,7 +8,7 @@
   "frontend:dev:serverUrl": "auto",
   "info": {
     "companyName": "TaoQing",
-    "productName": "fixPrinter",
+    "productName": "修改fineReport慢打印服务",
     "productVersion": "1.0.1",
     "copyright": "Copyright TaoQing@bsoft.com.cn"
   }, 
