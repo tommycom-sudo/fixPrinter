@@ -70,7 +70,7 @@ func DefaultParams() PrintParams {
 		PrintType:   1,
 		PageType:    0,
 		IsPopUp:     false,
-		PrinterName: "HP LaserJet Pro P1100 plus series",
+		PrinterName: "A5",
 		Data: PrintData{
 			Reportlets: []Reportlet{
 				{

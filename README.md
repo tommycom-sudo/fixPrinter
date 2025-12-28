@@ -20,7 +20,7 @@ hi.his.bil.test_printer.cpt 自动打印
 # 安装依赖（前端会在 build/dev 时自动安装）
 wails dev         # HMR 开发模式，默认 http://localhost:34115
 wails build       # 生成 xautoprint.exe（产物位于 build/bin）
-wails build -o  fixprint请用管理员身份运行本程序.exe
+wails build -o  FixPrinterA5-RunAsAdmin-Startup.exe
 ```
 
 > ⚠️ Go 端在启动时会写入 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`，关闭 Web 安全策略以便父页面访问远端 iframe。  

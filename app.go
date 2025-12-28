@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	defaultPrinterName   = "HP LaserJet Pro P1100 plus series"
+	defaultPrinterName   = "A5"
 	finePrintProcessName = "FinePrint.exe"
 	logDirName           = "logs"
 	logFileName          = "autoprint.log"
