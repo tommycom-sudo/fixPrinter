@@ -24,6 +24,11 @@ const (
 	finePrintProcessName = "FinePrint.exe"
 	logDirName           = "logs"
 	logFileName          = "autoprint.log"
+
+	// FinePrint 监控开关配置
+	// true: 启用 FinePrint.exe 进程监控（默认）
+	// false: 禁用 FinePrint.exe 进程监控
+	finePrintMonitorEnabled = false
 )
 
 // App struct
@@ -67,7 +72,13 @@ func (a *App) startup(ctx context.Context) {
 	a.initLogger()
 	a.printer.SetContext(ctx)
 	a.startProxy(ctx)
-	a.startFinePrintMonitor()
+
+	if finePrintMonitorEnabled {
+		a.startFinePrintMonitor()
+		a.logInfo("FinePrint 监控已启用")
+	} else {
+		a.logInfo("FinePrint 监控已禁用")
+	}
 
 	// Window is already hidden via StartHidden option
 	a.isWindowVisible = false
@@ -550,4 +561,36 @@ func (a *App) logError(format string, args ...interface{}) {
 	if a.ctx != nil {
 		runtime.LogError(a.ctx, message)
 	}
+}
+
+// IsFinePrintMonitorEnabled returns whether FinePrint monitoring is enabled via config
+func (a *App) IsFinePrintMonitorEnabled() bool {
+	return finePrintMonitorEnabled
+}
+
+// IsFinePrintMonitorRunning returns whether FinePrint monitor is currently running
+func (a *App) IsFinePrintMonitorRunning() bool {
+	return a.finePrintCancel != nil
+}
+
+// StartFinePrintMonitor manually starts the FinePrint process monitor
+func (a *App) StartFinePrintMonitor() error {
+	if a.finePrintCancel != nil {
+		return fmt.Errorf("FinePrint 监控已在运行中")
+	}
+	a.startFinePrintMonitor()
+	a.logInfo("手动启动 FinePrint 监控")
+	return nil
+}
+
+// StopFinePrintMonitor manually stops the FinePrint process monitor
+func (a *App) StopFinePrintMonitor() error {
+	if a.finePrintCancel == nil {
+		return fmt.Errorf("FinePrint 监控未运行")
+	}
+	a.finePrintCancel()
+	a.finePrintCancel = nil
+	a.finePrintActive = false
+	a.logInfo("手动停止 FinePrint 监控")
+	return nil
 }

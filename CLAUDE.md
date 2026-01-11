@@ -34,14 +34,16 @@ wails build -o fixprint请用管理员身份运行本程序.exe
 
 **核心应用** (`app.go`):
 - **App 结构体**：中央协调器，包含打印服务、反向代理和 FinePrint 进程监控
-- **打印机控制**：使用 PowerShell（`Set-Printer`、`Get-Printer`、`Get-PrintJob`、`Remove-PrintJob`）管理 HP LaserJet Pro P1100 plus series
+- **打印机控制**：使用 PowerShell（`Set-Printer`、`Get-Printer`、`Get-PrintJob`、`Remove-PrintJob`）管理 A5 打印机
 - **打印工作流**：`PausePrinter`（暂停）-> `StartPrint`（打印）-> `RemovePrintJob`（清除任务）-> `ResumePrinter`（恢复）-> `QuitApp`（退出）
-- **FinePrint 监控**：后台 goroutine 监视 `FinePrint.exe` 进程，检测到时自动触发打印
+- **FinePrint 监控**：后台 goroutine 每 5 秒监视 `FinePrint.exe` 进程，检测到时自动触发打印
+- **运行时 API**：`IsFinePrintMonitorEnabled()`、`IsFinePrintMonitorRunning()`、`StartFinePrintMonitor()`、`StopFinePrintMonitor()`
 
 **打印服务** (`internal/printer/printer.go`):
 - 领域模型：`PrintParams`、`Reportlet`、`PrintResult`
-- 服务管理异步 JS 执行，使用请求/响应通道模式
+- 服务管理异步 JS 执行，使用请求/响应通道模式（通过 `waiters` map 和 channel 实现请求-响应同步）
 - 默认目标：`hihis.smukqyy.cn` 上的 `hi/his/bil/test_printer.cpt`
+- **超时配置**：`ReadyTimeout`（45 秒）、`ReadyInterval`（400ms）、`FrameLoadTimeout`（25 秒）、`ResultTimeout`（60 秒）
 
 **反向代理** (`internal/proxy/server.go`):
 - 轻量级 HTTP 代理：`127.0.0.1:<随机端口>` -> `https://hihis.smukqyy.cn:443`
@@ -61,27 +63,31 @@ wails build -o fixprint请用管理员身份运行本程序.exe
 - JSON 编辑器用于打印参数
 - 嵌入式 iframe 用于 FineReport 会话
 - 打印任务监控表格（每 5 秒自动刷新）
-- 自动删除功能：打印机暂停时删除打印任务
+- 自动删除功能：打印机暂停时自动删除新出现的打印任务
 
 **核心函数**:
 - `handlePrint()`: 在 iframe 中加载 FineReport 页面
 - `handlePausePrinter()`: 暂停打印机并清空队列
 - `handleResumePrinter()`: 恢复打印机
 - `refreshJobs()`: 通过 Go 绑定监控打印队列
+- `loadReportFrame()`: 加载 iframe 并等待页面加载完成
 
 ### 打印数据流
 
 1. 用户在 UI 中编辑 JSON 参数
 2. `StartPrint()` 生成唯一的 `requestId`，通过 `runtime.WindowExecJS()` 调用 `window.__xAutoPrint.start()`
 3. 前端在 iframe 中加载 FineReport 入口 URL
-4. 等待 `window.FR` 对象可用（45 秒超时）
-5. 使用提供的参数调用 `FR.doURLPrint()`
-6. 前端调用 `NotifyPrintResult()` 通知 Go 后端
-7. Go 后端解除阻塞并返回结果给调用者
+4. 等待 iframe 加载完成（`FrameLoadTimeout` 超时）
+5. 等待 `window.FR` 对象可用（`ReadyTimeout` 超时，每 `ReadyInterval` 检查一次）
+6. 使用提供的参数调用 `FR.doURLPrint()`
+7. 前端调用 `NotifyPrintResult()` 通知 Go 后端
+8. Go 后端解除阻塞并返回结果给调用者
+
+**注意**：当前前端实现简化了打印流程，仅加载 FineReport 页面到 iframe，未自动执行 `FR.doURLPrint()`。实际打印由用户在 iframe 中手动完成或通过 FinePrint 进程监控自动触发。
 
 ### FinePrint 进程监控
 
-应用程序监控 `FinePrint.exe` 以自动化处方打印工作流：
+应用程序监控 `FinePrint.exe` 以自动化处方打印工作流（`watchFinePrintProcess`）：
 
 1. 检测到 `FinePrint.exe` 时，通过 `Set-Printer -StartTime/-UntilTime` 自动暂停打印机
 2. 监控打印队列，自动删除新任务
@@ -90,37 +96,46 @@ wails build -o fixprint请用管理员身份运行本程序.exe
 
 ## 配置
 
-**默认打印机**：`HP LaserJet Pro P1100 plus series`（硬编码在 `app.go` 中）
+**默认打印机**：`A5`（硬编码在 `app.go` 的 `defaultPrinterName` 常量中）
+
+**FinePrint 监控开关**：`finePrintMonitorEnabled`（`app.go` 常量）
+- `true`：启用 FinePrint.exe 进程监控（检测到进程时自动暂停打印机并清理队列）
+- `false`：禁用 FinePrint.exe 进程监控（默认值）
+- 可通过运行时 API `StartFinePrintMonitor()` / `StopFinePrintMonitor()` 动态控制
 
 **FineReport URLs**（`internal/printer/printer.go` 中的默认值）:
-- 入口: `https://hihis.smukqyy.cn/webroot/decision/view/report?viewlet=hi%2Fhis%2Fbil%2Ftest_printer.cpt...`
+- 入口: `https://hihis.smukqyy.cn/webroot/decision/view/report?viewlet=hi%252Fhis%252Fbil%252Ftest_printer.cpt...`
 - 打印: `https://hihis.smukqyy.cn/webroot/decision/view/report`
 
-**日志**：日志写入 `logs/autoprint.log`，带时间戳
+**日志**：日志写入 `logs/autoprint.log`，带时间戳和微秒精度
 
 ## 依赖
 
-主要 Go 包：
-- `github.com/wailsapp/wails/v2` - 桌面应用框架
-- `github.com/getlantern/systray` - 系统托盘集成
-- `github.com/google/uuid` - 请求 ID 生成
+主要 Go 包（Go 1.23+）：
+- `github.com/wailsapp/wails/v2` v2.11.0 - 桌面应用框架
+- `github.com/getlantern/systray` v1.2.2 - 系统托盘集成
+- `github.com/google/uuid` v1.6.0 - 请求 ID 生成
 
 前端：
-- `vite` - 构建工具
+- `vite` ^3.0.7 - 构建工具
 
 ## 文件结构说明
 
 - `wails.json` 包含应用程序元数据和构建配置
-- `frontend/src/` 中的前端源代码通过 `//go:embed` 打包到 Go 二进制文件中
-- Windows 图标位于 `build/windows/icon.ico`
-- `fix-printer.exe`（外部二进制文件）用于自动打印触发
+- `frontend/src/` 中的前端源代码通过 `//go:embed all:frontend/dist` 打包到 Go 二进制文件中
+- Windows 图标位于 `build/windows/icon.ico`（通过 `//go:embed` 嵌入到 `tray.go`）
+- `fix-printer.exe`（外部二进制文件）用于自动打印触发，需与主程序同目录
 
 ## 开发说明
 
-1. **WebView 安全**：应用明确禁用 Web 安全以允许跨域 iframe 访问。这仅在可信的内网环境中可接受。
+1. **WebView 安全**：应用在 `configureWebViewSecurity()` 中明确禁用 Web 安全（`--disable-web-security`）以允许跨域 iframe 访问。这仅在可信的内网环境中可接受。
 
-2. **PowerShell 命令**：所有打印机操作使用隐藏的 PowerShell 窗口（`SysProcAttr.HideWindow = true`）。
+2. **PowerShell 命令**：所有打印机操作使用隐藏的 PowerShell 窗口（`syscall.SysProcAttr{HideWindow: true}`）。
 
-3. **暂停机制**：打印机暂停使用时间窗口操作（`StartTime`/`UntilTime`）而非 `Suspend-PrintQueue`。暂停状态检测条件：`StartTime == 0` 且 `UntilTime == 2`。
+3. **暂停机制**：打印机暂停使用时间窗口操作（`StartTime`/`UntilTime`）而非 `Suspend-PrintQueue`。暂停状态检测条件：`StartTime == 0` 且 `UntilTime == 2`。`ensurePrinterPaused()` 函数用于确保打印机处于暂停状态。
 
 4. **代理 URL 重写**：代理启动时，`PrintParams` 中的 `entryUrl` 和 `printUrl` 会自动重写为指向 `127.0.0.1:<proxy_port>` 而非远程服务器。
+
+5. **窗口状态管理**：窗口默认隐藏（`StartHidden: true`），关闭时隐藏到系统托盘而非真正退出，除非 `allowExit` 标志为 `true`（在 FinePrint 清理完成后设置）。
+
+6. **FinePrint 监控配置**：通过修改 `app.go` 中的 `finePrintMonitorEnabled` 常量来控制是否在启动时自动开启 FinePrint 进程监控。默认为 `false`（禁用）。运行时可通过 `StartFinePrintMonitor()` 和 `StopFinePrintMonitor()` API 动态控制。
