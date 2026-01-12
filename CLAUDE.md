@@ -120,23 +120,53 @@ wails build -o fixprint请用管理员身份运行本程序.exe
 **默认打印机**：`A5`（硬编码在 `app.go` 的 `defaultPrinterName` 常量中）
 
 **API 监控配置** (`monitor.json`)：
+
+方式 1：直接在 JSON 中写 curl 命令（需要转义）
 ```json
 {
-  "pushPlusToken": "your_pushplus_token",
+  "pushPlusToken": "your_token",
   "tasks": [
     {
-      "name": "订单计算接口",
-      "cron": "*/1 * * * *",
-      "curl": "curl 'https://example.com/api/...' -H 'Content-Type: application/json' ...",
-      "timeoutMs": 1000,
+      "name": "订单接口",
+      "cron": "0 */1 * * * *",
+      "curl": "curl 'https://api.example.com/...' \\\n  -H 'Content-Type: application/json'",
+      "timeoutMs": 5000,
       "enabled": true
     }
   ]
 }
 ```
+
+方式 2：使用外部脚本文件（推荐，无需转义）
+```json
+{
+  "pushPlusToken": "your_token",
+  "tasks": [
+    {
+      "name": "订单接口",
+      "cron": "0 */1 * * * *",
+      "scriptFile": "scripts/订单接口.sh",
+      "timeoutMs": 5000,
+      "enabled": true
+    }
+  ]
+}
+```
+
+`scripts/订单接口.sh`：
+```bash
+curl 'https://api.example.com/...' \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -b 'cookie=value' \
+  --data-raw '{"key":"value"}'
+```
+
 - `pushPlusToken`：PushPlus 通知 token（从 pushplus.plus 获取）
-- `tasks`：监控任务列表，每个任务包含名称、Cron 表达式、curl 命令、超时阈值、启用状态
-- Cron 表达式格式：`秒 分 时 日 月`，如 `*/1 * * * *` = 每分钟，`0 */5 * * *` = 每 5 分钟
+- `tasks`：监控任务列表，每个任务包含名称、Cron 表达式、curl 命令或脚本文件路径、超时阈值、启用状态
+- `curl`：直接在 JSON 中写 curl 命令（需要 `\\\n` 转义换行符）
+- `scriptFile`：指定外部脚本文件路径（相对或绝对路径），支持真实多行格式
+- Cron 表达式格式：`秒 分 时 日 月 周`（6 段式），如 `0 */1 * * * *` = 每分钟
 
 **FinePrint 监控开关**：`finePrintMonitorEnabled`（`app.go` 常量）
 - `true`：启用 FinePrint.exe 进程监控（检测到进程时自动暂停打印机并清理队列）
@@ -147,7 +177,7 @@ wails build -o fixprint请用管理员身份运行本程序.exe
 - 入口: `https://hihis.smukqyy.cn/webroot/decision/view/report?viewlet=hi%252Fhis%252Fbil%252Ftest_printer.cpt...`
 - 打印: `https://hihis.smukqyy.cn/webroot/decision/view/report`
 
-**日志**：日志写入 `logs/autoprint.log`，带时间戳和微秒精度
+**日志**：日志按天存储到 `logs/autoprint-2006-01-02.log`（日期格式），带时间戳和微秒精度。每次写日志时自动检查日期变化，跨天时自动切换到新文件。
 
 ## 依赖
 
@@ -164,6 +194,7 @@ wails build -o fixprint请用管理员身份运行本程序.exe
 
 - `wails.json` 包含应用程序元数据和构建配置
 - `monitor.json` API 监控配置文件（程序运行时自动创建）
+- `scripts/` 存放外部 curl 脚本文件（推荐使用脚本文件方式配置监控任务）
 - `frontend/src/` 中的前端源代码通过 `//go:embed all:frontend/dist` 打包到 Go 二进制文件中
 - Windows 图标位于 `build/windows/icon.ico`（通过 `//go:embed` 嵌入到 `tray.go`）
 - `fix-printer.exe`（外部二进制文件）用于自动打印触发，需与主程序同目录

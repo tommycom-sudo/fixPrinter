@@ -50,7 +50,8 @@ export namespace monitor {
 	export class TaskConfig {
 	    name: string;
 	    cron: string;
-	    curl: string;
+	    curl?: string;
+	    scriptFile?: string;
 	    timeoutMs: number;
 	    enabled: boolean;
 	    lastExecuted?: string;
@@ -66,6 +67,7 @@ export namespace monitor {
 	        this.name = source["name"];
 	        this.cron = source["cron"];
 	        this.curl = source["curl"];
+	        this.scriptFile = source["scriptFile"];
 	        this.timeoutMs = source["timeoutMs"];
 	        this.enabled = source["enabled"];
 	        this.lastExecuted = source["lastExecuted"];

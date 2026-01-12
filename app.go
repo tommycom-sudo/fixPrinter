@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -47,6 +48,11 @@ type App struct {
 	autoPrintTriggered bool
 	monitor            *monitor.Scheduler
 	monitorConfig      *monitor.Config
+
+	// 日志相关
+	logFile     *os.File
+	logDate     string
+	logFileMu   sync.Mutex
 }
 
 // PrintJob captures a subset of properties returned by Get-PrintJob.
@@ -116,6 +122,13 @@ func (a *App) shutdown(ctx context.Context) {
 	if a.monitor != nil {
 		a.monitor.Stop()
 	}
+	// 关闭日志文件
+	a.logFileMu.Lock()
+	if a.logFile != nil {
+		a.logFile.Close()
+		a.logFile = nil
+	}
+	a.logFileMu.Unlock()
 }
 
 // ShowWindow shows the main window
@@ -542,21 +555,72 @@ func (a *App) initLogger() {
 	}
 	dir := filepath.Join(wd, logDirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		a.logError("创建日志目录失败: %v", err)
+		log.Printf("[ERROR] 创建日志目录失败: %v", err)
 		return
 	}
+
+	// 按日期初始化日志文件
+	currentDate := time.Now().Format("2006-01-02")
+	logFileName := fmt.Sprintf("autoprint-%s.log", currentDate)
 	logPath := filepath.Join(dir, logFileName)
+
 	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
-		a.logError("打开日志文件失败: %v", err)
+		log.Printf("[ERROR] 打开日志文件失败: %v", err)
 		return
 	}
+
+	a.logFileMu.Lock()
+	a.logFile = file
+	a.logDate = currentDate
+	a.logFileMu.Unlock()
+
 	log.SetOutput(file)
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	a.logInfo("日志输出已写入 %s", logPath)
+	log.Printf("[INFO] 日志输出已写入 %s", logPath)
+}
+
+// rotateLogFile 检查日期变化并切换日志文件
+func (a *App) rotateLogFile() {
+	currentDate := time.Now().Format("2006-01-02")
+
+	a.logFileMu.Lock()
+	defer a.logFileMu.Unlock()
+
+	if a.logDate == currentDate {
+		return // 日期未变化，无需切换
+	}
+
+	// 关闭旧文件
+	if a.logFile != nil {
+		oldPath := a.logFile.Name()
+		a.logFile.Close()
+		log.Printf("[INFO] 日志文件 %s 已关闭", oldPath)
+	}
+
+	// 创建新文件
+	wd, _ := os.Getwd()
+	dir := filepath.Join(wd, logDirName)
+	logFileName := fmt.Sprintf("autoprint-%s.log", currentDate)
+	logPath := filepath.Join(dir, logFileName)
+
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		log.Printf("[ERROR] 打开新日志文件失败: %v", err)
+		return
+	}
+
+	a.logFile = file
+	a.logDate = currentDate
+	log.SetOutput(file)
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
+	log.Printf("[INFO] 日志已切换到新文件: %s", logPath)
 }
 
 func (a *App) logInfo(format string, args ...interface{}) {
+	// 检查日期变化
+	a.rotateLogFile()
+
 	message := fmt.Sprintf(format, args...)
 	log.Printf("[INFO] %s", message)
 	if a.ctx != nil {
@@ -565,6 +629,9 @@ func (a *App) logInfo(format string, args ...interface{}) {
 }
 
 func (a *App) logError(format string, args ...interface{}) {
+	// 检查日期变化
+	a.rotateLogFile()
+
 	message := fmt.Sprintf(format, args...)
 	log.Printf("[ERROR] %s", message)
 	if a.ctx != nil {

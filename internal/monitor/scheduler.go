@@ -178,19 +178,39 @@ func (s *Scheduler) addTask(task TaskConfig) error {
 		return fmt.Errorf("cron expression is empty")
 	}
 
-	// Parse the curl command
-	parsed, err := ParseCURLCommand(task.CURL)
-	if err != nil {
-		return fmt.Errorf("parse curl failed: %w", err)
-	}
+	// Get the task reference (by name) so we can always get the latest config
+	taskName := task.Name
 
 	// Create job function
 	jobFunc := func() {
-		s.executeTask(task.Name, parsed, task.TimeoutMs)
+		// Get fresh task config on each execution (supports script file changes)
+		taskRef := s.config.GetTask(taskName)
+		if taskRef == nil {
+			log.Printf("[ERROR] Task '%s' not found in config", taskName)
+			return
+		}
+
+		// Get curl command (from file or direct config)
+		curlCmd, err := taskRef.GetCURLCommand()
+		if err != nil {
+			log.Printf("[ERROR] Failed to get curl command for task '%s': %v", taskName, err)
+			s.config.UpdateTaskStatus(taskName, "failed", err.Error())
+			return
+		}
+
+		// Parse the curl command
+		parsed, err := ParseCURLCommand(curlCmd)
+		if err != nil {
+			log.Printf("[ERROR] Failed to parse curl command for task '%s': %v", taskName, err)
+			s.config.UpdateTaskStatus(taskName, "failed", err.Error())
+			return
+		}
+
+		s.executeTask(taskName, parsed, taskRef.TimeoutMs)
 	}
 
 	// Add to cron
-	_, err = s.cron.AddFunc(task.Cron, jobFunc)
+	_, err := s.cron.AddFunc(task.Cron, jobFunc)
 	return err
 }
 

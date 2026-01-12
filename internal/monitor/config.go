@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -23,12 +24,29 @@ type Config struct {
 type TaskConfig struct {
 	Name         string            `json:"name"`
 	Cron         string            `json:"cron"`
-	CURL         string            `json:"curl"`
+	CURL         string            `json:"curl,omitempty"`
+	ScriptFile   string            `json:"scriptFile,omitempty"`
 	TimeoutMs    int64             `json:"timeoutMs"`
 	Enabled      bool              `json:"enabled"`
 	LastExecuted string            `json:"lastExecuted,omitempty"`
 	LastStatus   string            `json:"lastStatus,omitempty"`
 	LastError    string            `json:"lastError,omitempty"`
+}
+
+// GetCURLCommand returns the curl command for this task.
+// If ScriptFile is set, it reads the command from the file.
+// Otherwise, it returns the direct CURL value.
+func (t *TaskConfig) GetCURLCommand() (string, error) {
+	// If script file is specified, read from file
+	if t.ScriptFile != "" {
+		data, err := os.ReadFile(t.ScriptFile)
+		if err != nil {
+			return "", fmt.Errorf("read script file '%s': %w", t.ScriptFile, err)
+		}
+		return string(data), nil
+	}
+	// Otherwise use the direct curl value
+	return t.CURL, nil
 }
 
 // ParsedRequest represents a parsed curl command
