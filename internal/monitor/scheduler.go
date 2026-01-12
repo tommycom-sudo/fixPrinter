@@ -232,18 +232,14 @@ func (s *Scheduler) executeTask(taskName string, parsed *ParsedRequest, timeoutM
 
 	// Check if we need to send an alert
 	if result.TimedOut || result.ErrorMessage != "" || !result.Success {
-		// Send alert via pushplus
-		if s.config.PushPlusToken != "" {
-			if err := s.executor.SendAlert(s.config.PushPlusToken, taskName, result, timeoutMs); err != nil {
-				log.Printf("[ERROR] Failed to send alert: %v", err)
-			}
+		// Send alert via pushplus (will use default token if config is empty)
+		if err := s.executor.SendAlert(s.config.PushPlusToken, taskName, result, timeoutMs); err != nil {
+			log.Printf("[ERROR] Failed to send alert: %v", err)
 		}
 	} else if result.DurationMs > timeoutMs {
 		// Slow but successful request
-		if s.config.PushPlusToken != "" {
-			if err := s.executor.SendAlert(s.config.PushPlusToken, taskName, result, timeoutMs); err != nil {
-				log.Printf("[ERROR] Failed to send alert: %v", err)
-			}
+		if err := s.executor.SendAlert(s.config.PushPlusToken, taskName, result, timeoutMs); err != nil {
+			log.Printf("[ERROR] Failed to send alert: %v", err)
 		}
 	}
 
@@ -263,9 +259,6 @@ func (s *Scheduler) executeTask(taskName string, parsed *ParsedRequest, timeoutM
 		log.Printf("[INFO] Task '%s' completed - Status: %s, Duration: %dms, Error: %s",
 			taskName, status, duration.Milliseconds(), result.ErrorMessage)
 	}
-
-	// Auto-save config to persist status
-	_ = s.config.SaveConfig(s.configPath)
 }
 
 // TaskStatus represents the status of a task

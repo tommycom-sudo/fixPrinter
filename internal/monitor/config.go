@@ -10,7 +10,6 @@ import (
 
 const (
 	defaultConfigFile = "monitor.json"
-	defaultPushPlusURL = "https://www.pushplus.plus/send"
 )
 
 // Config represents the monitoring configuration

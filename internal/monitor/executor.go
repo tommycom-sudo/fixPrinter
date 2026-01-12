@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+const (
+	defaultPushPlusURL = "https://www.pushplus.plus/send"
+	defaultPushPlusToken = "8745d9c0245d4e96a7e58b8e7de78f1a"
+)
+
 // ExecutionResult represents the result of a HTTP request execution
 type ExecutionResult struct {
 	Success      bool          `json:"success"`
@@ -121,8 +126,10 @@ func (e *Executor) ExecuteString(ctx context.Context, curlCmd string, timeoutMs 
 
 // TestPushPlus tests the pushplus notification configuration
 func (e *Executor) TestPushPlus(token, title, content string) error {
+	// Use default token if not provided
 	if token == "" {
-		return fmt.Errorf("pushplus token is empty")
+		token = defaultPushPlusToken
+		log.Printf("[INFO] Using default PushPlus token")
 	}
 
 	url := fmt.Sprintf("%s?token=%s&title=%s&content=%s",
@@ -147,20 +154,26 @@ func (e *Executor) TestPushPlus(token, title, content string) error {
 	}
 	defer resp.Body.Close()
 
+	// Read response body for logging
+	body, _ := io.ReadAll(resp.Body)
+
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("pushplus returned status %d", resp.StatusCode)
+		return fmt.Errorf("pushplus returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	log.Printf("[INFO] PushPlus notification sent successfully")
+	log.Printf("[INFO] PushPlus notification sent successfully, response: %s", string(body))
 	return nil
 }
 
 // SendAlert sends an alert notification via pushplus
 func (e *Executor) SendAlert(token, taskName string, result *ExecutionResult, thresholdMs int64) error {
+	// Use default token if not provided
 	if token == "" {
-		log.Printf("[WARN] PushPlus token not configured, skipping alert")
-		return nil
+		token = defaultPushPlusToken
+		log.Printf("[INFO] Using default PushPlus token for alert")
 	}
+
+	log.Printf("[INFO] Sending PushPlus alert for task '%s' (token: %s)", taskName, maskToken(token))
 
 	var content strings.Builder
 	content.WriteString(fmt.Sprintf("【API 监控告警】\n\n"))
@@ -180,7 +193,7 @@ func (e *Executor) SendAlert(token, taskName string, result *ExecutionResult, th
 	url := fmt.Sprintf("%s?token=%s&title=%s&content=%s",
 		defaultPushPlusURL,
 		token,
-		url.QueryEscape("API监控告警 - "+taskName),
+		url.QueryEscape("告警:"+taskName),
 		url.QueryEscape(content.String()),
 	)
 
@@ -199,10 +212,24 @@ func (e *Executor) SendAlert(token, taskName string, result *ExecutionResult, th
 	}
 	defer resp.Body.Close()
 
+	// Read response body for logging
+	body, _ := io.ReadAll(resp.Body)
+
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("pushplus returned status %d", resp.StatusCode)
+		return fmt.Errorf("pushplus returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	log.Printf("[INFO] Alert sent for task '%s': %s", taskName, result.ErrorMessage)
+	log.Printf("[INFO] PushPlus alert sent successfully for task '%s' (token: %s), response: %s", taskName, maskToken(token), string(body))
 	return nil
+}
+
+// maskToken masks the pushplus token for logging (shows first 4 and last 4 chars)
+func maskToken(token string) string {
+	if token == "" {
+		return "(empty)"
+	}
+	if len(token) <= 8 {
+		return token
+	}
+	return token[:4] + "****" + token[len(token)-4:]
 }
