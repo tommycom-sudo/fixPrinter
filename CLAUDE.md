@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-FineReport 自动打印工具是一个轻量级的 Wails（Go + WebView2）桌面应用程序，用于在医院环境中自动化处方单打印。它加载 FineReport 页面，等待 `FR` 对象就绪，然后执行 `FR.doURLPrint()` 来打印处方文档。
+FineReport 自动打印工具是一个轻量级的 Wails（Go + WebView2）桌面应用程序，主要用于：
+
+1. **处方单自动打印**：在医院环境中自动化处方单打印，加载 FineReport 页面，等待 `FR` 对象就绪，然后执行 `FR.doURLPrint()` 来打印处方文档
+2. **API 监控与报警**：解析 curl 命令，按 Cron 表达式定时执行 HTTP 请求，监控响应时间，超时或失败时通过 PushPlus 发送告警通知
 
 **目标环境**：仅限 Windows（使用 PowerShell 进行打印机控制，WebView2 用于 UI）
 
@@ -55,6 +58,12 @@ wails build -o fixprint请用管理员身份运行本程序.exe
 - 菜单：显示/隐藏窗口、退出
 - 图标嵌入自 `build/windows/icon.ico`
 
+**API 监控服务** (`internal/monitor/`):
+- **配置管理** (`config.go`)：从 `monitor.json` 加载/保存监控任务配置，支持 PushPlus token 配置
+- **CURL 解析器** (`curl_parser.go`)：解析 curl 命令字符串，提取 URL、headers、body 等信息
+- **执行器** (`executor.go`)：执行 HTTP 请求，测量响应时间，超时或失败时触发 PushPlus 告警
+- **调度器** (`scheduler.go`)：基于 Cron 表达式调度任务执行，管理任务生命周期
+
 ### 前端
 
 **技术栈**：原生 JS + Vite，无框架
@@ -94,9 +103,40 @@ wails build -o fixprint请用管理员身份运行本程序.exe
 3. 触发 `fix-printer.exe` 继续打印
 4. 所有任务清除后，恢复打印机并退出应用程序
 
+### API 监控与报警
+
+应用程序提供 API 监控功能，用于定时检查 HTTP 接口响应状态：
+
+1. **配置文件** (`monitor.json`)：存储 PushPlus token 和监控任务列表
+2. **CURL 解析**：自动解析 curl 命令，提取 URL、headers、cookies、body 等信息
+3. **定时执行**：基于 Cron 表达式（如 `*/1 * * * *` 表示每分钟执行）调度任务
+4. **超时检测**：配置响应时间阈值（默认 1000ms），超时即触发告警
+5. **PushPlus 告警**：请求失败、超时或返回非 2xx 状态码时，通过 PushPlus 发送通知
+
+**运行时 API**：`GetMonitorConfig()`、`SaveMonitorConfig()`、`GetMonitorStatus()`、`AddMonitorTask()`、`RemoveMonitorTask()`、`UpdateMonitorTask()`、`TestPushPlus()`、`ParseCURL()`
+
 ## 配置
 
 **默认打印机**：`A5`（硬编码在 `app.go` 的 `defaultPrinterName` 常量中）
+
+**API 监控配置** (`monitor.json`)：
+```json
+{
+  "pushPlusToken": "your_pushplus_token",
+  "tasks": [
+    {
+      "name": "订单计算接口",
+      "cron": "*/1 * * * *",
+      "curl": "curl 'https://example.com/api/...' -H 'Content-Type: application/json' ...",
+      "timeoutMs": 1000,
+      "enabled": true
+    }
+  ]
+}
+```
+- `pushPlusToken`：PushPlus 通知 token（从 pushplus.plus 获取）
+- `tasks`：监控任务列表，每个任务包含名称、Cron 表达式、curl 命令、超时阈值、启用状态
+- Cron 表达式格式：`秒 分 时 日 月`，如 `*/1 * * * *` = 每分钟，`0 */5 * * *` = 每 5 分钟
 
 **FinePrint 监控开关**：`finePrintMonitorEnabled`（`app.go` 常量）
 - `true`：启用 FinePrint.exe 进程监控（检测到进程时自动暂停打印机并清理队列）
@@ -115,6 +155,7 @@ wails build -o fixprint请用管理员身份运行本程序.exe
 - `github.com/wailsapp/wails/v2` v2.11.0 - 桌面应用框架
 - `github.com/getlantern/systray` v1.2.2 - 系统托盘集成
 - `github.com/google/uuid` v1.6.0 - 请求 ID 生成
+- `github.com/robfig/cron/v3` v3.0.1 - Cron 表达式调度
 
 前端：
 - `vite` ^3.0.7 - 构建工具
@@ -122,6 +163,7 @@ wails build -o fixprint请用管理员身份运行本程序.exe
 ## 文件结构说明
 
 - `wails.json` 包含应用程序元数据和构建配置
+- `monitor.json` API 监控配置文件（程序运行时自动创建）
 - `frontend/src/` 中的前端源代码通过 `//go:embed all:frontend/dist` 打包到 Go 二进制文件中
 - Windows 图标位于 `build/windows/icon.ico`（通过 `//go:embed` 嵌入到 `tray.go`）
 - `fix-printer.exe`（外部二进制文件）用于自动打印触发，需与主程序同目录
@@ -139,3 +181,5 @@ wails build -o fixprint请用管理员身份运行本程序.exe
 5. **窗口状态管理**：窗口默认隐藏（`StartHidden: true`），关闭时隐藏到系统托盘而非真正退出，除非 `allowExit` 标志为 `true`（在 FinePrint 清理完成后设置）。
 
 6. **FinePrint 监控配置**：通过修改 `app.go` 中的 `finePrintMonitorEnabled` 常量来控制是否在启动时自动开启 FinePrint 进程监控。默认为 `false`（禁用）。运行时可通过 `StartFinePrintMonitor()` 和 `StopFinePrintMonitor()` API 动态控制。
+
+7. **API 监控配置**：编辑 `monitor.json` 文件配置监控任务和 PushPlus token。程序启动时自动加载配置并启动调度器。修改配置后可通过 `ReloadMonitor()` API 重新加载。Cron 表达式格式为 6 段式（秒 分 时 日 月 周），支持标准 Cron 语法。

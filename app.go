@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"fine-report-printer/internal/monitor"
 	"fine-report-printer/internal/printer"
 	"fine-report-printer/internal/proxy"
 
@@ -44,6 +45,8 @@ type App struct {
 	cleanupCompleted   bool
 	allowExit          bool
 	autoPrintTriggered bool
+	monitor            *monitor.Scheduler
+	monitorConfig      *monitor.Config
 }
 
 // PrintJob captures a subset of properties returned by Get-PrintJob.
@@ -80,6 +83,9 @@ func (a *App) startup(ctx context.Context) {
 		a.logInfo("FinePrint 监控已禁用")
 	}
 
+	// Initialize API monitor
+	a.startAPIMonitor()
+
 	// Window is already hidden via StartHidden option
 	a.isWindowVisible = false
 }
@@ -106,6 +112,9 @@ func (a *App) shutdown(ctx context.Context) {
 		if err := a.proxy.Stop(ctx); err != nil {
 			runtime.LogError(ctx, "stop proxy: "+err.Error())
 		}
+	}
+	if a.monitor != nil {
+		a.monitor.Stop()
 	}
 }
 
@@ -593,4 +602,119 @@ func (a *App) StopFinePrintMonitor() error {
 	a.finePrintActive = false
 	a.logInfo("手动停止 FinePrint 监控")
 	return nil
+}
+
+// API Monitor Task Management
+
+// startAPIMonitor initializes the API monitor
+func (a *App) startAPIMonitor() {
+	config, err := monitor.LoadConfig("")
+	if err != nil {
+		a.logError("加载监控配置失败: %v", err)
+		return
+	}
+
+	a.monitorConfig = config
+	a.monitor = monitor.NewScheduler(config, "monitor.json")
+
+	if err := a.monitor.Start(); err != nil {
+		a.logError("启动监控调度器失败: %v", err)
+		return
+	}
+
+	a.logInfo("API 监控已启动")
+}
+
+// GetMonitorConfig returns the current monitor configuration
+func (a *App) GetMonitorConfig() *monitor.Config {
+	if a.monitorConfig == nil {
+		cfg, _ := monitor.LoadConfig("")
+		a.monitorConfig = cfg
+	}
+	return a.monitorConfig
+}
+
+// SaveMonitorConfig saves the monitor configuration
+func (a *App) SaveMonitorConfig(cfgJSON string) error {
+	var cfg monitor.Config
+	if err := json.Unmarshal([]byte(cfgJSON), &cfg); err != nil {
+		return fmt.Errorf("解析配置失败: %w", err)
+	}
+
+	if err := cfg.SaveConfig("monitor.json"); err != nil {
+		return fmt.Errorf("保存配置失败: %w", err)
+	}
+
+	a.monitorConfig = &cfg
+	return nil
+}
+
+// ReloadMonitor reloads and restarts the monitor
+func (a *App) ReloadMonitor() error {
+	if a.monitor == nil {
+		return fmt.Errorf("监控未初始化")
+	}
+
+	if err := a.monitor.Reload(); err != nil {
+		return err
+	}
+
+	a.logInfo("监控配置已重新加载")
+	return nil
+}
+
+// GetMonitorStatus returns the status of all monitoring tasks
+func (a *App) GetMonitorStatus() map[string]monitor.TaskStatus {
+	if a.monitor == nil {
+		return make(map[string]monitor.TaskStatus)
+	}
+	return a.monitor.GetStatus()
+}
+
+// AddMonitorTask adds a new monitoring task
+func (a *App) AddMonitorTask(taskJSON string) error {
+	var task monitor.TaskConfig
+	if err := json.Unmarshal([]byte(taskJSON), &task); err != nil {
+		return fmt.Errorf("解析任务失败: %w", err)
+	}
+
+	if a.monitor == nil {
+		return fmt.Errorf("监控未初始化")
+	}
+
+	return a.monitor.AddTask(task)
+}
+
+// RemoveMonitorTask removes a monitoring task
+func (a *App) RemoveMonitorTask(taskName string) error {
+	if a.monitor == nil {
+		return fmt.Errorf("监控未初始化")
+	}
+
+	return a.monitor.RemoveTask(taskName)
+}
+
+// UpdateMonitorTask updates an existing monitoring task
+func (a *App) UpdateMonitorTask(taskJSON string) error {
+	var task monitor.TaskConfig
+	if err := json.Unmarshal([]byte(taskJSON), &task); err != nil {
+		return fmt.Errorf("解析任务失败: %w", err)
+	}
+
+	if a.monitor == nil {
+		return fmt.Errorf("监控未初始化")
+	}
+
+	return a.monitor.UpdateTask(task)
+}
+
+// TestPushPlus tests the pushplus notification
+func (a *App) TestPushPlus(token, title, content string) error {
+	exec := monitor.NewExecutor()
+	return exec.TestPushPlus(token, title, content)
+}
+
+// ParseCURL parses a curl command and returns the parsed result
+func (a *App) ParseCURL(curlCmd string) (*monitor.ParsedRequest, error) {
+	return monitor.ParseCURLCommand(curlCmd)
 }
