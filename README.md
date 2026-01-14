@@ -2,9 +2,9 @@
 
 
 轻量级 Wails 应用，用于自动打开 FineReport 报表页面、等待 `FR` 对象就绪，并执行 `FR.doURLPrint()` 完成处方单打印。
-
-暂停->打印->清除打印JOB->恢复->退出
-hi.his.bil.test_printer.cpt 自动打印
+监测finereport.exe 此进程如果存在， 执行以下步骤：
+   暂停->打印->清除打印JOB->恢复->退出
+  (打印使用的：hi.his.bil.test_printer.cpt 自动打印）
 
 ## 当前能力（阶段 2）
 

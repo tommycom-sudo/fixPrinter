@@ -177,6 +177,7 @@ func (e *Executor) SendAlert(token, taskName string, result *ExecutionResult, th
 
 	var content strings.Builder
 	content.WriteString(fmt.Sprintf("【API 监控告警】\n\n"))
+	content.WriteString(fmt.Sprintf("时间: %s\n", time.Now().Format("15:04:05")))
 	content.WriteString(fmt.Sprintf("任务名称: %s\n", taskName))
 	content.WriteString(fmt.Sprintf("状态: 执行超时/失败\n"))
 	content.WriteString(fmt.Sprintf("耗时: %d ms\n", result.DurationMs))
