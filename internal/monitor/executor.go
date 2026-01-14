@@ -46,8 +46,8 @@ func NewExecutor() *Executor {
 	}
 }
 
-// Execute executes a parsed request with timeout monitoring
-func (e *Executor) Execute(ctx context.Context, req *ParsedRequest, timeoutMs int64) *ExecutionResult {
+// Execute executes a parsed request using the client's timeout settings.
+func (e *Executor) Execute(ctx context.Context, req *ParsedRequest) *ExecutionResult {
 	result := &ExecutionResult{}
 	startTime := time.Now()
 
@@ -64,15 +64,7 @@ func (e *Executor) Execute(ctx context.Context, req *ParsedRequest, timeoutMs in
 		return result
 	}
 
-	// Create context with timeout
-	timeout := time.Duration(timeoutMs) * time.Millisecond
-	if timeout <= 0 {
-		timeout = 1 * time.Second
-	}
-	execCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	httpReq = httpReq.WithContext(execCtx)
+	httpReq = httpReq.WithContext(ctx)
 
 	// Execute request
 	resp, err := e.client.Do(httpReq)
@@ -81,7 +73,7 @@ func (e *Executor) Execute(ctx context.Context, req *ParsedRequest, timeoutMs in
 		if strings.Contains(err.Error(), "context deadline exceeded") ||
 		   strings.Contains(err.Error(), "timeout") {
 			result.TimedOut = true
-			result.ErrorMessage = fmt.Sprintf("Request timeout after %dms", timeoutMs)
+			result.ErrorMessage = fmt.Sprintf("Request timeout after %dms", result.DurationMs)
 		} else {
 			result.ErrorMessage = fmt.Sprintf("Request failed: %v", err)
 		}
@@ -113,7 +105,7 @@ func (e *Executor) Execute(ctx context.Context, req *ParsedRequest, timeoutMs in
 }
 
 // ExecuteString executes a curl command string directly
-func (e *Executor) ExecuteString(ctx context.Context, curlCmd string, timeoutMs int64) *ExecutionResult {
+func (e *Executor) ExecuteString(ctx context.Context, curlCmd string) *ExecutionResult {
 	parsed, err := ParseCURLCommand(curlCmd)
 	if err != nil {
 		return &ExecutionResult{
@@ -121,7 +113,7 @@ func (e *Executor) ExecuteString(ctx context.Context, curlCmd string, timeoutMs 
 		}
 	}
 
-	return e.Execute(ctx, parsed, timeoutMs)
+	return e.Execute(ctx, parsed)
 }
 
 // TestPushPlus tests the pushplus notification configuration
@@ -191,10 +183,11 @@ func (e *Executor) SendAlert(token, taskName string, result *ExecutionResult, th
 		content.WriteString(fmt.Sprintf("原因: HTTP %d\n", result.StatusCode))
 	}
 
+	title := fmt.Sprintf("超时 %dms %s ", result.DurationMs, taskName)
 	url := fmt.Sprintf("%s?token=%s&title=%s&content=%s",
 		defaultPushPlusURL,
 		token,
-		url.QueryEscape("告警:"+taskName),
+		url.QueryEscape(title),
 		url.QueryEscape(content.String()),
 	)
 

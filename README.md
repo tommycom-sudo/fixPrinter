@@ -44,6 +44,12 @@ wails build -o  FixPrinterA5-RunAsAdmin-Startup.exe
 └── wails.json                 # Wails 配置
 ```
 
+## 监控告警说明
+
+- `timeoutMs` 仅作为告警阈值，不会中断 HTTP 请求；请求硬超时由 Go 端 `http.Client.Timeout` 控制
+- 告警标题会显示实际请求耗时，例如 `告警:任务名 超时 250ms`
+- 日志里的 `Duration` 为 HTTP 请求耗时，与告警中的耗时一致
+
 ## 常见问题
 
 - 如果 `FR` 对象长时间未出现，前端会抛出 “等待 FineReport 对象超时” 并在 Go 侧返回错误。

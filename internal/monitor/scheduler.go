@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/robfig/cron/v3"
 )
@@ -216,11 +215,10 @@ func (s *Scheduler) addTask(task TaskConfig) error {
 
 // executeTask executes a single monitoring task
 func (s *Scheduler) executeTask(taskName string, parsed *ParsedRequest, timeoutMs int64) {
-	startTime := time.Now()
 	log.Printf("[INFO] Executing task '%s'", taskName)
 
 	// Execute the request
-	result := s.executor.Execute(s.ctx, parsed, timeoutMs)
+	result := s.executor.Execute(s.ctx, parsed)
 
 	// Update status
 	status := "success"
@@ -243,8 +241,6 @@ func (s *Scheduler) executeTask(taskName string, parsed *ParsedRequest, timeoutM
 		}
 	}
 
-	duration := time.Since(startTime)
-
 	// Log detailed result
 	if result.ResponseBody != "" {
 		// Limit response body in log to avoid huge logs
@@ -254,10 +250,10 @@ func (s *Scheduler) executeTask(taskName string, parsed *ParsedRequest, timeoutM
 			responseLog = responseLog[:maxLogLen] + "... (truncated)"
 		}
 		log.Printf("[INFO] Task '%s' completed - Status: %s, HTTP %d, Duration: %dms, Response: %s",
-			taskName, status, result.StatusCode, duration.Milliseconds(), responseLog)
+			taskName, status, result.StatusCode, result.DurationMs, responseLog)
 	} else {
 		log.Printf("[INFO] Task '%s' completed - Status: %s, Duration: %dms, Error: %s",
-			taskName, status, duration.Milliseconds(), result.ErrorMessage)
+			taskName, status, result.DurationMs, result.ErrorMessage)
 	}
 }
 
