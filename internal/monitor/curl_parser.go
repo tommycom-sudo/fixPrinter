@@ -30,6 +30,19 @@ func ParseCURLCommand(curlCmd string) (*ParsedRequest, error) {
 		token := tokens[i]
 
 		switch {
+		case token == "-L" || token == "--location":
+			// Follow redirects (enabled by default in http.Client)
+			// No action needed as http.Client follows redirects by default
+
+		case token == "-k" || token == "--insecure":
+			// Skip SSL verification (not implemented, as it's insecure)
+
+		case token == "--compressed":
+			// Request compressed response (handled automatically by http.Transport)
+
+		case token == "-s" || token == "--silent":
+			// Silent mode (no output, not relevant for our use case)
+
 		case token == "-X" || token == "--request":
 			if i+1 < len(tokens) {
 				req.Method = strings.ToUpper(tokens[i+1])
